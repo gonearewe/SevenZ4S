@@ -11,6 +11,7 @@ repositories {
 }
 
 dependencies {
-    compile group: 'net.sf.sevenzipjbinding', name: 'sevenzipjbinding', version: '16.02-2.01'
-    compile group: 'net.sf.sevenzipjbinding', name: 'sevenzipjbinding-all-platforms', version: '16.02-2.01'
+    implementation group: 'org.scala-lang', name: 'scala-library', version: '2.13.4'
+    implementation group: 'net.sf.sevenzipjbinding', name: 'sevenzipjbinding', version: '16.02-2.01'
+    implementation group: 'net.sf.sevenzipjbinding', name: 'sevenzipjbinding-all-platforms', version: '16.02-2.01'
 }
