@@ -1,14 +1,13 @@
-package com.mactavish.compress_sharp.lib
+package com.mactavish.sevenz4s
 
 import java.io.{File, RandomAccessFile}
 
 import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream
-import net.sf.sevenzipjbinding.util.ByteArrayStream
 
 object Main {
   def main(args: Array[String]): Unit = {
     val f = new File("E:\\backup.txt")
-    new ArchiveCreator7Z().setLevel(5).onEachEnd(
+    new ArchiveCreator7Z().setHeaderEncryption(true).setPassword("123").setSolid(true).onEachEnd(
       ok=>println("one done")
     ).onProcess(
       (c,total)=>println(s"$c-$total")

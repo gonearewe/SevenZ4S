@@ -1,12 +1,13 @@
-package com.mactavish.compress_sharp.lib
+package com.mactavish.sevenz4s
 
 import java.io.RandomAccessFile
 
-import net.sf.sevenzipjbinding.{ArchiveFormat, IOutCreateArchive, IOutCreateCallback, IOutItemAllFormats, ISequentialInStream, ISequentialOutStream, SevenZip}
+import net.sf.sevenzipjbinding.{ArchiveFormat, ICryptoGetTextPassword, IOutCreateArchive, IOutCreateCallback, IOutItemAllFormats, ISequentialInStream, ISequentialOutStream, SevenZip}
 import net.sf.sevenzipjbinding.impl.{OutItemFactory, RandomAccessFileOutStream}
 
-trait AbstractArchiveCreator[E<:AbstractArchiveCreator[_,_],T <: CompressionEntry] {
+trait AbstractArchiveCreator[E <: AbstractArchiveCreator[_, _], T <: CompressionEntry] {
   private var dst: ISequentialOutStream = _
+  private var password: String = _
   private var onProcess: ProgressTracker = _
   private var onEachEnd: Boolean => Unit = _
   private var entries: EntryProxy = _
@@ -20,16 +21,23 @@ trait AbstractArchiveCreator[E<:AbstractArchiveCreator[_,_],T <: CompressionEntr
    * trait initialization.
    */
   protected val format: ArchiveFormat
-  protected val archivePrototype: IOutCreateArchive[_>:IOutItemAllFormats] =
+  protected val archivePrototype: IOutCreateArchive[_ >: IOutItemAllFormats] =
     SevenZip.openOutArchive(format: ArchiveFormat)
 
   def towards(dst: ISequentialOutStream): E = {
     //if(dst==null) throw SevenZ4SException("dst has already been set")
     this.dst = dst
+    // down-cast to actual ArchiveCreator in order to
+    // enable chain methods calling on concrete ArchiveCreator.
     this.asInstanceOf[E]
   }
 
   def towards(dst: RandomAccessFile): E = towards(new RandomAccessFileOutStream(dst))
+
+  def setPassword(passwd:String):E={
+    this.password=passwd
+    this.asInstanceOf[E]
+  }
 
   def onProcess(f: ProgressTracker): E = {
     //if(onProcess==null) throw SevenZ4SException("onProcess callback function has already been set")
@@ -56,7 +64,7 @@ trait AbstractArchiveCreator[E<:AbstractArchiveCreator[_,_],T <: CompressionEntr
     // print trace for debugging
     //archivePrototype.setTrace(true)
 
-    archivePrototype.createArchive(dst, numEntry, new IOutCreateCallback[IOutItemAllFormats] {
+    archivePrototype.createArchive(dst, numEntry, new IOutCreateCallback[IOutItemAllFormats] with ICryptoGetTextPassword {
       private var total: Long = -1
 
       override def setTotal(l: Long): Unit = this.total = l
@@ -87,6 +95,11 @@ trait AbstractArchiveCreator[E<:AbstractArchiveCreator[_,_],T <: CompressionEntr
             throw SevenZ4SException(s"onTabulation callback function only provided $i entries, $numEntry expected")
         }
       }
+
+      /**
+       * If null is passed, simply means no password, and it won't crash at runtime.
+       */
+      override def cryptoGetTextPassword(): String = password
     })
 
     this.entries = null // release inner resources

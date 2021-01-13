@@ -1,5 +1,3 @@
-package com.mactavish.compress_sharp.lib
-
 import java.io.{ByteArrayOutputStream, OutputStream, RandomAccessFile}
 import java.lang
 import java.util.Date

@@ -1,4 +1,4 @@
-package com.mactavish.compress_sharp.lib
+package com.mactavish.sevenz4s
 
 case class SevenZ4SException(message: String) extends Exception(message) {
 

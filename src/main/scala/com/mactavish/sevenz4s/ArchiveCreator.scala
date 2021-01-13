@@ -1,72 +1,45 @@
-package com.mactavish.compress_sharp.lib
+package com.mactavish.sevenz4s
 
-import java.io.RandomAccessFile
+import com.mactavish.sevenz4s.ArchiveCreatorFeature._
+import net.sf.sevenzipjbinding._
 
-import net.sf.sevenzipjbinding.{ArchiveFormat, IOutCreateArchive, IOutCreateArchive7z, IOutCreateArchiveGZip, IOutCreateArchiveZip, IOutFeatureSetEncryptHeader, IOutFeatureSetLevel, IOutFeatureSetMultithreading, IOutFeatureSetSolid, IOutItemAllFormats, IOutItemZip, ISequentialOutStream}
-import net.sf.sevenzipjbinding.impl.RandomAccessFileOutStream
-
-class ArchiveCreatorZip() extends {
+final class ArchiveCreatorZip() extends {
   /**
    * Use `early definition` syntax to make sure format get initialized before super trait.
    */
-  override protected val format: ArchiveFormat = ArchiveFormat.SEVEN_ZIP
-} with AbstractArchiveCreator[ArchiveCreatorZip, CompressionEntryZip] {
-  private val archive = archivePrototype.asInstanceOf[IOutCreateArchiveZip]
-
-  def setLevel(compressionLevel: Int): ArchiveCreatorZip = {
-    archive.setLevel(compressionLevel)
-    this
-  }
+  override protected val format: ArchiveFormat = ArchiveFormat.ZIP
+} with AbstractArchiveCreator[ArchiveCreatorZip, CompressionEntryZip]
+  with SetLevel[ArchiveCreatorZip] {
+  /**
+   * Cast and expose `archive` in order to set possible features.
+   */
+  override protected val archive: IOutCreateArchiveZip = archivePrototype.asInstanceOf[IOutCreateArchiveZip]
 }
 
-class ArchiveCreatorGZip() extends {
-  override protected val format: ArchiveFormat = ArchiveFormat.SEVEN_ZIP
-} with AbstractArchiveCreator[ArchiveCreatorGZip, CompressionEntryGZip] {
-  private val archive = archivePrototype.asInstanceOf[IOutCreateArchiveGZip]
-
-  def setLevel(compressionLevel: Int): ArchiveCreatorGZip = {
-    archive.setLevel(compressionLevel)
-    this
-  }
+final class ArchiveCreatorGZip() extends {
+  override protected val format: ArchiveFormat = ArchiveFormat.GZIP
+} with AbstractArchiveCreator[ArchiveCreatorGZip, CompressionEntryGZip]
+  with SetLevel[ArchiveCreatorGZip] {
+  override protected val archive: IOutCreateArchiveGZip = archivePrototype.asInstanceOf[IOutCreateArchiveGZip]
 }
 
-class ArchiveCreator7Z() extends {
+final class ArchiveCreator7Z() extends {
   override protected val format: ArchiveFormat = ArchiveFormat.SEVEN_ZIP
-} with AbstractArchiveCreator[ArchiveCreator7Z, CompressionEntry7Z] {
-  private val archive = archivePrototype.asInstanceOf[IOutCreateArchive7z]
-
-  def setLevel(compressionLevel: Int): ArchiveCreator7Z = {
-    archive.setLevel(compressionLevel)
-    this
-  }
-
-  def setSolid(b: Boolean): ArchiveCreator7Z = {
-    archive.setSolid(b)
-    this
-  }
-
-  def setSolidFiles(i: Int): ArchiveCreator7Z = {
-    archive.setSolidFiles(i)
-    this
-  }
-
-  def setSolidSize(l: Long): ArchiveCreator7Z = {
-    archive.setSolidSize(l)
-    this
-  }
-
-  def setSolidExtension(b: Boolean): ArchiveCreator7Z = {
-    archive.setSolidExtension(b)
-    this
-  }
-
-  def setThreadCount(threadCount: Int): ArchiveCreator7Z = {
-    archive.setThreadCount(threadCount)
-    this
-  }
-
-  def setHeaderEncryption(b: Boolean): ArchiveCreator7Z = {
-    archive.setHeaderEncryption(b)
-    this
-  }
+} with AbstractArchiveCreator[ArchiveCreator7Z, CompressionEntry7Z]
+  with SetEncryptHeader[ArchiveCreator7Z]
+  with SetSolid[ArchiveCreator7Z]
+  with SetLevel[ArchiveCreator7Z]
+  with SetMultithreading[ArchiveCreator7Z] {
+  override protected val archive: IOutCreateArchive7z = archivePrototype.asInstanceOf[IOutCreateArchive7z]
 }
+
+final class ArchiveCreatorBZip2() extends {
+  override protected val format: ArchiveFormat = ArchiveFormat.BZIP2
+} with AbstractArchiveCreator[ArchiveCreatorBZip2, CompressionEntryBZip2]
+  with SetLevel[ArchiveCreatorGZip] {
+  override protected val archive: IOutCreateArchiveBZip2 = archivePrototype.asInstanceOf[IOutCreateArchiveBZip2]
+}
+
+final class ArchiveCreatorTar extends {
+  override protected val format: ArchiveFormat = ArchiveFormat.TAR
+} with AbstractArchiveCreator[ArchiveCreatorTar, CompressionEntryTar]
