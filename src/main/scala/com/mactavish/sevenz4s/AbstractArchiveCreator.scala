@@ -2,51 +2,61 @@ package com.mactavish.compress_sharp.lib
 
 import java.io.RandomAccessFile
 
-import net.sf.sevenzipjbinding.{ArchiveFormat, IOutCreateCallback, IOutItemAllFormats, ISequentialInStream, ISequentialOutStream, SevenZip}
+import net.sf.sevenzipjbinding.{ArchiveFormat, IOutCreateArchive, IOutCreateCallback, IOutItemAllFormats, ISequentialInStream, ISequentialOutStream, SevenZip}
 import net.sf.sevenzipjbinding.impl.{OutItemFactory, RandomAccessFileOutStream}
 
-trait AbstractArchiveCreator[T <: CompressionEntry] {
+trait AbstractArchiveCreator[E<:AbstractArchiveCreator[_,_],T <: CompressionEntry] {
   private var dst: ISequentialOutStream = _
   private var onProcess: ProgressTracker = _
   private var onEachEnd: Boolean => Unit = _
   private var entries: EntryProxy = _
   private var numEntry: Int = _
+  /**
+   * Subclass override `format` to specify which format of archive it
+   * intends to create.
+   *
+   * Subclass must make sure format get initialized before this trait,
+   * (by early definition, maybe) as archivePrototype will use it during
+   * trait initialization.
+   */
   protected val format: ArchiveFormat
+  protected val archivePrototype: IOutCreateArchive[_>:IOutItemAllFormats] =
+    SevenZip.openOutArchive(format: ArchiveFormat)
 
-  def towards(dst: ISequentialOutStream): AbstractArchiveCreator[T] = {
+  def towards(dst: ISequentialOutStream): E = {
     //if(dst==null) throw SevenZ4SException("dst has already been set")
     this.dst = dst
-    this
+    this.asInstanceOf[E]
   }
 
-  def towards(dst: RandomAccessFile): AbstractArchiveCreator[T] = towards(new RandomAccessFileOutStream(dst))
+  def towards(dst: RandomAccessFile): E = towards(new RandomAccessFileOutStream(dst))
 
-  def onProcess(f: ProgressTracker): AbstractArchiveCreator[T] = {
+  def onProcess(f: ProgressTracker): E = {
     //if(onProcess==null) throw SevenZ4SException("onProcess callback function has already been set")
     this.onProcess = f
-    this
+    this.asInstanceOf[E]
   }
 
-  def onEachEnd(f: Boolean => Unit): AbstractArchiveCreator[T] = {
+  def onEachEnd(f: Boolean => Unit): E = {
     //if(onEachEnd==null) throw SevenZ4SException("onEachEnd callback function has already been set")
     this.onEachEnd = f
-    this
+    this.asInstanceOf[E]
   }
 
-  def onTabulation(numEntry: Int)(f: => Seq[T]): AbstractArchiveCreator[T] = {
+  def onTabulation(numEntry: Int)(f: => Seq[T]): E = {
     //if(entries==null) throw SevenZ4SException("onTabulation callback function has already been set")
     this.entries = new EntryProxy(f)
     this.numEntry = numEntry
-    this
+    this.asInstanceOf[E]
   }
 
   def compress(): Unit = {
     checkAndCompleteConfig()
-    val archive = SevenZip.openOutArchive(format: ArchiveFormat)
-    // print trace for debugging
-    //archive.setTrace(true)
 
-    archive.createArchive(dst, numEntry, new IOutCreateCallback[IOutItemAllFormats] {
+    // print trace for debugging
+    //archivePrototype.setTrace(true)
+
+    archivePrototype.createArchive(dst, numEntry, new IOutCreateCallback[IOutItemAllFormats] {
       private var total: Long = -1
 
       override def setTotal(l: Long): Unit = this.total = l
@@ -85,7 +95,8 @@ trait AbstractArchiveCreator[T <: CompressionEntry] {
   private def checkAndCompleteConfig(): Unit = {
     if (onProcess == null) onProcess = (_, _) => {}
     if (onEachEnd == null) onEachEnd = _ => {}
-    if (entries == null) throw SevenZ4SException("onTabulation callback function mustn't be empty")
+    if (entries == null)
+      throw SevenZ4SException("creator may not be reused or onTabulation callback function mustn't be empty")
     if (dst == null) throw SevenZ4SException("dst stream mustn't be empty")
   }
 
