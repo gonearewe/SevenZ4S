@@ -1,11 +1,15 @@
-package com.mactavish.sevenz4s
+package com.mactavish.sevenz4s.creator
 
 import java.io.RandomAccessFile
 
-import net.sf.sevenzipjbinding.{ArchiveFormat, ICryptoGetTextPassword, IOutCreateArchive, IOutCreateCallback, IOutItemAllFormats, ISequentialInStream, ISequentialOutStream, SevenZip}
+import com.mactavish.sevenz4s.{CompressionEntry, ProgressTracker, SevenZ4SException}
+import net.sf.sevenzipjbinding._
 import net.sf.sevenzipjbinding.impl.{OutItemFactory, RandomAccessFileOutStream}
 
-trait AbstractArchiveCreator[E <: AbstractArchiveCreator[_, _], T <: CompressionEntry] {
+trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
+  protected type TEntry <: CompressionEntry
+  protected type TItem <: IOutItemBase
+
   private var dst: ISequentialOutStream = _
   private var password: String = _
   private var onProcess: ProgressTracker = _
@@ -21,37 +25,10 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[_, _], T <: Compression
    * trait initialization.
    */
   protected val format: ArchiveFormat
-  protected val archivePrototype: IOutCreateArchive[_ >: IOutItemAllFormats] =
-    SevenZip.openOutArchive(format: ArchiveFormat)
+  protected val archivePrototype: IOutCreateArchive[TItem] =
+    SevenZip.openOutArchive(format: ArchiveFormat).asInstanceOf[IOutCreateArchive[TItem]]
 
-  def towards(dst: ISequentialOutStream): E = {
-    //if(dst==null) throw SevenZ4SException("dst has already been set")
-    this.dst = dst
-    // down-cast to actual ArchiveCreator in order to
-    // enable chain methods calling on concrete ArchiveCreator.
-    this.asInstanceOf[E]
-  }
-
-  def towards(dst: RandomAccessFile): E = towards(new RandomAccessFileOutStream(dst))
-
-  def setPassword(passwd:String):E={
-    this.password=passwd
-    this.asInstanceOf[E]
-  }
-
-  def onProcess(f: ProgressTracker): E = {
-    //if(onProcess==null) throw SevenZ4SException("onProcess callback function has already been set")
-    this.onProcess = f
-    this.asInstanceOf[E]
-  }
-
-  def onEachEnd(f: Boolean => Unit): E = {
-    //if(onEachEnd==null) throw SevenZ4SException("onEachEnd callback function has already been set")
-    this.onEachEnd = f
-    this.asInstanceOf[E]
-  }
-
-  def onTabulation(numEntry: Int)(f: => Seq[T]): E = {
+  def onTabulation(numEntry: Int)(f: => Seq[TEntry]): E = {
     //if(entries==null) throw SevenZ4SException("onTabulation callback function has already been set")
     this.entries = new EntryProxy(f)
     this.numEntry = numEntry
@@ -64,7 +41,7 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[_, _], T <: Compression
     // print trace for debugging
     //archivePrototype.setTrace(true)
 
-    archivePrototype.createArchive(dst, numEntry, new IOutCreateCallback[IOutItemAllFormats] with ICryptoGetTextPassword {
+    archivePrototype.createArchive(dst, numEntry, new IOutCreateCallback[TItem] with ICryptoGetTextPassword {
       private var total: Long = -1
 
       override def setTotal(l: Long): Unit = this.total = l
@@ -75,8 +52,8 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[_, _], T <: Compression
 
       override def getItemInformation(
                                        i: Int,
-                                       outItemFactory: OutItemFactory[IOutItemAllFormats]
-                                     ): IOutItemAllFormats = {
+                                       outItemFactory: OutItemFactory[TItem]
+                                     ): TItem = {
         val templateItem = outItemFactory.createOutItem()
         if (i == 0) entries.reset()
         entries.next() match {
@@ -105,6 +82,37 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[_, _], T <: Compression
     this.entries = null // release inner resources
   }
 
+  def towards(dst: ISequentialOutStream): E = {
+    //if(dst==null) throw SevenZ4SException("dst has already been set")
+    this.dst = dst
+    // down-cast to actual ArchiveCreator in order to
+    // enable chain methods calling on concrete ArchiveCreator.
+    this.asInstanceOf[E]
+  }
+
+  def towards(dst: RandomAccessFile): E = towards(new RandomAccessFileOutStream(dst))
+
+  def setPassword(passwd: String): E = {
+    this.password = passwd
+    this.asInstanceOf[E]
+  }
+
+  def onProcess(f: ProgressTracker): E = {
+    //if(onProcess==null) throw SevenZ4SException("onProcess callback function has already been set")
+    this.onProcess = f
+    this.asInstanceOf[E]
+  }
+
+  def onEachEnd(f: Boolean => Unit): E = {
+    //if(onEachEnd==null) throw SevenZ4SException("onEachEnd callback function has already been set")
+    this.onEachEnd = f
+    this.asInstanceOf[E]
+  }
+
+  protected def adaptItemToEntry(item: TItem): TEntry
+
+  protected def adaptEntryToItem(entry: TEntry, template: TItem): TItem
+
   private def checkAndCompleteConfig(): Unit = {
     if (onProcess == null) onProcess = (_, _) => {}
     if (onEachEnd == null) onEachEnd = _ => {}
@@ -113,11 +121,11 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[_, _], T <: Compression
     if (dst == null) throw SevenZ4SException("dst stream mustn't be empty")
   }
 
-  private class EntryProxy(producer: => Seq[T]) {
-    lazy val handle: Seq[T] = producer
-    private var remains: Seq[T] = _
+  private class EntryProxy(producer: => Seq[TEntry]) {
+    lazy val handle: Seq[TEntry] = producer
+    private var remains: Seq[TEntry] = _
 
-    def next(): Option[T] = {
+    def next(): Option[TEntry] = {
       if (remains == null) remains = handle
       if (remains == null) None
       else {
@@ -131,31 +139,4 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[_, _], T <: Compression
       remains = null
     }
   }
-
-  private def adaptEntryToItem(entry: CompressionEntry, template: IOutItemAllFormats): IOutItemAllFormats = {
-    template.setDataSize(entry.dataSize)
-    entry match {
-      case gzip: CompressionEntryGZip =>
-        template.setPropertyPath(gzip.path)
-        template.setPropertyLastModificationTime(gzip.lastModificationTime)
-      case bzip2: CompressionEntryBZip2 =>
-      case zip: CompressionEntryZip =>
-        template.setPropertyPath(zip.path)
-        template.setPropertyIsDir(zip.isDir)
-        template.setPropertyLastModificationTime(zip.lastModificationTime)
-        template.setPropertyLastAccessTime(zip.lastAccessTime)
-        template.setPropertyCreationTime(zip.creationTime)
-      case sevenz: CompressionEntry7Z =>
-        template.setPropertyPath(sevenz.path)
-        template.setPropertyIsDir(sevenz.isDir)
-        template.setPropertyLastModificationTime(sevenz.lastModificationTime)
-        template.setPropertyIsAnti(sevenz.isAnti)
-      case _ =>
-    }
-    template
-  }
-}
-
-trait ProgressTracker extends ((Long, Long) => Unit) {
-  def apply(completed: Long, total: Long): Unit
 }

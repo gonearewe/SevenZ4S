@@ -7,48 +7,48 @@ import net.sf.sevenzipjbinding._
 
 sealed class CompressionEntry(val dataSize: Long, val source: ISequentialInStream)
 
-final class CompressionEntryGZip(
-                                  dataSize: Long,
-                                  source: ISequentialInStream,
-                                  val path: String,
-                                  val lastModificationTime: Date = Calendar.getInstance().getTime
-                                ) extends CompressionEntry(dataSize, source) {
+final case class CompressionEntryGZip(
+                                       override val dataSize: Long,
+                                       override val source: ISequentialInStream,
+                                       path: String,
+                                       lastModificationTime: Date = Calendar.getInstance().getTime
+                                     ) extends CompressionEntry(dataSize, source) {
 }
 
-final class CompressionEntryBZip2(
-                                   dataSize: Long,
-                                   source: ISequentialInStream
-                                 ) extends CompressionEntry(dataSize, source)
+final case class CompressionEntryBZip2(
+                                        override val dataSize: Long,
+                                        override val source: ISequentialInStream
+                                      ) extends CompressionEntry(dataSize, source)
 
-final class CompressionEntryZip(
-                                 dataSize: Long,
-                                 source: ISequentialInStream,
-                                 val path: String,
-                                 val isDir: Boolean,
-                                 val lastModificationTime: Date = Calendar.getInstance().getTime,
-                                 val lastAccessTime: Date = Calendar.getInstance().getTime,
-                                 val creationTime: Date = Calendar.getInstance().getTime,
-                               ) extends CompressionEntry(dataSize, source)
+final case class CompressionEntryZip(
+                                      override val dataSize: Long,
+                                      override val source: ISequentialInStream,
+                                      path: String,
+                                      isDir: Boolean,
+                                      lastModificationTime: Date = Calendar.getInstance().getTime,
+                                      lastAccessTime: Date = Calendar.getInstance().getTime,
+                                      creationTime: Date = Calendar.getInstance().getTime,
+                                    ) extends CompressionEntry(dataSize, source)
 
 
-final class CompressionEntry7Z(
-                                dataSize: Long,
-                                source: ISequentialInStream,
-                                val path: String,
-                                val isDir: Boolean,
-                                val lastModificationTime: Date = Calendar.getInstance().getTime,
-                                val isAnti: Boolean = false //  If true delete corresponding file or directory during
-                                // extraction.
-                              ) extends CompressionEntry(dataSize, source)
+final case class CompressionEntry7Z(
+                                     override val dataSize: Long,
+                                     override val source: ISequentialInStream,
+                                     path: String,
+                                     isDir: Boolean,
+                                     lastModificationTime: Date = Calendar.getInstance().getTime,
+                                     isAnti: Boolean = false //  If true delete corresponding file or directory during
+                                     // extraction.
+                                   ) extends CompressionEntry(dataSize, source)
 
-final class CompressionEntryTar(
-                                 dataSize: Long,
-                                 source: ISequentialInStream,
-                                 val path: String,
-                                 val isDir: Boolean,
-                                 val lastModificationTime: Date = Calendar.getInstance().getTime,
-                                 val user: String = "",
-                                 val group: String = "",
-                                 val symLink: String = null,
-                                 val hardLink: String = null
-                               ) extends CompressionEntry(dataSize, source)
+final case class CompressionEntryTar(
+                                      override val dataSize: Long,
+                                      override val source: ISequentialInStream,
+                                      path: String,
+                                      isDir: Boolean,
+                                      lastModificationTime: Date = Calendar.getInstance().getTime,
+                                      user: String = "",
+                                      group: String = "",
+                                      symLink: String = null,
+                                      hardLink: String = null
+                                    ) extends CompressionEntry(dataSize, source)

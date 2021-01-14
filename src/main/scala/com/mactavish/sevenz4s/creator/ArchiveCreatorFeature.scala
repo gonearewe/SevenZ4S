@@ -1,10 +1,10 @@
-package com.mactavish.sevenz4s
+package com.mactavish.sevenz4s.creator
 
 import net.sf.sevenzipjbinding.{IOutFeatureSetEncryptHeader, IOutFeatureSetLevel, IOutFeatureSetMultithreading, IOutFeatureSetSolid}
 
 object ArchiveCreatorFeature {
 
-  trait SetEncryptHeader[T <: AbstractArchiveCreator[T, _] with SetEncryptHeader[T]] {
+  trait SetEncryptHeader[T <: AbstractArchiveCreator[T] with SetEncryptHeader[T]] {
     protected val archive: IOutFeatureSetEncryptHeader
 
     def setHeaderEncryption(b: Boolean): T = {
@@ -13,25 +13,25 @@ object ArchiveCreatorFeature {
     }
   }
 
-  trait SetLevel[T <: AbstractArchiveCreator[T, _] with SetLevel[T]]{
+  trait SetLevel[T <: AbstractArchiveCreator[T] with SetLevel[T]] {
     protected val archive: IOutFeatureSetLevel
 
-    def setLevel(compressionLevel: Int):T={
+    def setLevel(compressionLevel: Int): T = {
       archive.setLevel(compressionLevel)
       this.asInstanceOf[T]
     }
   }
 
-  trait SetMultithreading[T <: AbstractArchiveCreator[T, _] with SetMultithreading[T]]{
+  trait SetMultithreading[T <: AbstractArchiveCreator[T] with SetMultithreading[T]] {
     protected val archive: IOutFeatureSetMultithreading
 
-    def	setThreadCount(threadCount:Int):T={
+    def setThreadCount(threadCount: Int): T = {
       archive.setThreadCount(threadCount)
       this.asInstanceOf[T]
     }
   }
 
-  trait SetSolid[T <: AbstractArchiveCreator[T, _] with SetSolid[T]] {
+  trait SetSolid[T <: AbstractArchiveCreator[T] with SetSolid[T]] {
     protected val archive: IOutFeatureSetSolid
 
     def setSolid(b: Boolean): T = {
