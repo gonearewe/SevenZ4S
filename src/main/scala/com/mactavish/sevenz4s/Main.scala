@@ -1,9 +1,9 @@
 package com.mactavish.sevenz4s
 
-import java.io.{File, RandomAccessFile}
+import java.io.File
 
 import com.mactavish.sevenz4s.updater.ArchiveUpdater7Z
-import net.sf.sevenzipjbinding.impl.{RandomAccessFileInStream, RandomAccessFileOutStream}
+import net.sf.sevenzipjbinding.util.ByteArrayStream
 
 object Main {
   def main(args: Array[String]): Unit = {
@@ -16,13 +16,23 @@ object Main {
     //  Seq(new CompressionEntry7Z(f.length(),new RandomAccessFileInStream(new RandomAccessFile(f,"rw")),"a.txt",false),
     //    new CompressionEntry7Z(f.length(),new RandomAccessFileInStream(new RandomAccessFile(f,"rw")),"b.txt",false))
     //}.compress()
-    val f = new RandomAccessFile(new File("test.7z"), "r")
-    val to = new RandomAccessFile(new File("test.7z"), "rw")
-    new ArchiveUpdater7Z().from(new RandomAccessFileInStream(f))
-      .towards(new RandomAccessFileOutStream(to))
+    val f = new File("test.7z")
+    new ArchiveUpdater7Z().from(f)
+      .towards(f)
       .removeWhere {
         entry =>
           entry.path == "a.txt"
+      }.removeWhere {
+      entry =>
+        entry.path == "b.txt"
+    }.append(Seq(CompressionEntry7Z(
+      "afgvcj".getBytes.length,
+      new ByteArrayStream("afgvcj".getBytes, false),
+      "append.txt", isDir = false)))
+      .update {
+        x =>
+          println(x)
+          x
       }
   }
 }
