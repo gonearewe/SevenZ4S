@@ -1,21 +1,36 @@
 package com.mactavish.sevenz4s.creator
 
-import java.io.RandomAccessFile
+import java.io.{File, RandomAccessFile}
 
 import com.mactavish.sevenz4s.{CompressionEntry, ProgressTracker, SevenZ4SException}
 import net.sf.sevenzipjbinding._
 import net.sf.sevenzipjbinding.impl.{OutItemFactory, RandomAccessFileOutStream}
+import net.sf.sevenzipjbinding.util.ByteArrayStream
 
 trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
   protected type TEntry <: CompressionEntry
   protected type TItem <: IOutItemBase
 
   private var dst: ISequentialOutStream = _
+  /**
+   * `archivePrototype` will be casted to specific type in subclasses
+   * so that their features can be enabled.
+   */
+  protected val archivePrototype: IOutCreateArchive[TItem] =
+    SevenZip.openOutArchive(format: ArchiveFormat).asInstanceOf[IOutCreateArchive[TItem]]
+  /**
+   * If creator writes archive stream into file, `file` stores the handle
+   * so that it can be closed afterwards. If not, `file` remains null.
+   */
+  private var file: RandomAccessFile = _
+  /**
+   * If `password` is set, then the archive will be encrypted
+   * with given password.
+   */
   private var password: String = _
-  private var onProcess: ProgressTracker = _
-  private var onEachEnd: Boolean => Unit = _
-  private var entries: EntryProxy = _
-  private var numEntry: Int = _
+  private var onProcess: ProgressTracker = (_, _) => {}
+  private var onEachEnd: Boolean => Unit = _ => {}
+
   /**
    * Subclass override `format` to specify which format of archive it
    * intends to create.
@@ -25,18 +40,38 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
    * trait initialization.
    */
   protected val format: ArchiveFormat
-  protected val archivePrototype: IOutCreateArchive[TItem] =
-    SevenZip.openOutArchive(format: ArchiveFormat).asInstanceOf[IOutCreateArchive[TItem]]
+  /**
+   * `usedOnce` marks whether `compress` method has been called,
+   * if true, then this creator can't be reused.
+   */
+  private var usedOnce: Boolean = false
 
-  def onTabulation(numEntry: Int)(f: => Seq[TEntry]): E = {
-    //if(entries==null) throw SevenZ4SException("onTabulation callback function has already been set")
-    this.entries = new EntryProxy(f)
-    this.numEntry = numEntry
-    this.asInstanceOf[E]
-  }
+  /**
+   * Final stage of the archive creation, it will create an archive
+   * with given entry. After this operation, this ArchiveCreator may
+   * not be reused.
+   *
+   * @param entry entry in the expected archive to be created.
+   */
+  def compress(entry: TEntry): Unit = compress(Seq(entry))
 
-  def compress(): Unit = {
-    checkAndCompleteConfig()
+  /**
+   * Final stage of the archive creation, it will create an archive
+   * with given entries. After this operation, this ArchiveCreator may
+   * not be reused.
+   *
+   * Note that some archive formats (`bzip2`, `gzip`) only supports compression
+   * of single archive entry (thus they're usually used along with `tar`).
+   * So `compress` with `Seq[TEntry]` is made `protected`, only those supporting
+   * multi-archive override it to `public`.
+   *
+   * @param entries entries in the expected archive to be created.
+   */
+  protected def compress(entries: Seq[TEntry]): Unit = {
+    if (dst == null) throw SevenZ4SException("archive output not set, did you call `towards`?")
+
+    val numEntry = entries.size
+    val entryProxy = new EntryProxy(entries)
 
     // print trace for debugging
     //archivePrototype.setTrace(true)
@@ -55,21 +90,30 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
                                        outItemFactory: OutItemFactory[TItem]
                                      ): TItem = {
         val templateItem = outItemFactory.createOutItem()
-        if (i == 0) entries.reset()
-        entries.next() match {
+        if (i == 0) entryProxy.reset()
+        entryProxy.next() match {
           case Some(entry) => adaptEntryToItem(entry, templateItem)
           case None =>
-            throw SevenZ4SException(s"onTabulation callback function only provided $i entries, $numEntry expected")
+            throw SevenZ4SException(s"only $i entries provided, $numEntry expected")
         }
       }
 
+      /**
+       * `getStream` is called after all(`numEntry` times) `getItemInformation` calls,
+       * but note that, it could be called for times fewer than `numEntry`,
+       * since directory entry (whose `isDir` == true) will be skipped, meaning
+       * `i` can be discontinuous. And that's why we use `entryProxy.nextSource()`
+       * instead of `entryProxy.next()`.
+       *
+       * @param i index of entry
+       * @return where 7Z engine gets data stream
+       */
       override def getStream(i: Int): ISequentialInStream = {
-        if (i == 0) entries.reset()
-        entries.next() match {
-          case Some(entry) => entry.source
+        if (!entryProxy.hasNext) entryProxy.reset()
+        entryProxy.nextSource() match {
+          case Some(src) => src
           case None =>
-            // shouldn't happen as `getItemInformation` has checked already
-            throw SevenZ4SException(s"onTabulation callback function only provided $i entries, $numEntry expected")
+            throw SevenZ4SException(s"only $i entries containing source provided, $numEntry expected")
         }
       }
 
@@ -79,18 +123,28 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
       override def cryptoGetTextPassword(): String = password
     })
 
-    this.entries = null // release inner resources
+    archivePrototype.close()
+    if (this.file != null)
+      this.file.close()
   }
 
-  def towards(dst: ISequentialOutStream): E = {
-    //if(dst==null) throw SevenZ4SException("dst has already been set")
-    this.dst = dst
+  def towards(dst: Array[Byte]): E = {
+    if (dst == null) throw SevenZ4SException("dst has already been set")
+
+    this.dst = new ByteArrayStream(dst, false, Int.MaxValue)
     // down-cast to actual ArchiveCreator in order to
     // enable chain methods calling on concrete ArchiveCreator.
     this.asInstanceOf[E]
   }
 
-  def towards(dst: RandomAccessFile): E = towards(new RandomAccessFileOutStream(dst))
+  def towards(dst: File): E = {
+    if (dst == null) throw SevenZ4SException("dst has already been set")
+
+    // must open in "rw" mode
+    this.file = new RandomAccessFile(dst, "rw")
+    this.dst = new RandomAccessFileOutStream(this.file)
+    this.asInstanceOf[E]
+  }
 
   def setPassword(passwd: String): E = {
     this.password = passwd
@@ -113,21 +167,18 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
 
   protected def adaptEntryToItem(entry: TEntry, template: TItem): TItem
 
-  private def checkAndCompleteConfig(): Unit = {
-    if (onProcess == null) onProcess = (_, _) => {}
-    if (onEachEnd == null) onEachEnd = _ => {}
-    if (entries == null)
-      throw SevenZ4SException("creator may not be reused or onTabulation callback function mustn't be empty")
-    if (dst == null) throw SevenZ4SException("dst stream mustn't be empty")
-  }
+  /**
+   * EntryProxy serves as an iterator of entries.
+   *
+   * @param producer entries to build from
+   */
+  private class EntryProxy(producer: Seq[TEntry]) {
+    private var remains: Seq[TEntry] = producer
 
-  private class EntryProxy(producer: => Seq[TEntry]) {
-    lazy val handle: Seq[TEntry] = producer
-    private var remains: Seq[TEntry] = _
+    def hasNext: Boolean = remains != Nil
 
     def next(): Option[TEntry] = {
-      if (remains == null) remains = handle
-      if (remains == null) None
+      if (remains == Nil) None
       else {
         val a = remains.head
         remains = remains.tail
@@ -135,8 +186,18 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
       }
     }
 
+    def nextSource(): Option[ISequentialInStream] = {
+      next() match {
+        case Some(entry) =>
+          // directory doesn't contain source, skip
+          if (entry.source == null) nextSource() else Some(entry.source)
+        case None => None
+      }
+    }
+
     def reset(): Unit = {
-      remains = null
+      remains = producer
     }
   }
+
 }

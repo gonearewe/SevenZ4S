@@ -14,4 +14,10 @@ dependencies {
     implementation group: 'org.scala-lang', name: 'scala-library', version: '2.13.4'
     implementation group: 'net.sf.sevenzipjbinding', name: 'sevenzipjbinding', version: '16.02-2.01'
     implementation group: 'net.sf.sevenzipjbinding', name: 'sevenzipjbinding-all-platforms', version: '16.02-2.01'
+
+    testImplementation group: 'org.junit.jupiter', name: 'junit-jupiter-engine', version: '5.7.0'
+}
+
+test {
+    useJUnitPlatform()
 }

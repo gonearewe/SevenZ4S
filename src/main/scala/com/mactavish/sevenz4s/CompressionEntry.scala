@@ -5,7 +5,9 @@ import java.util.{Calendar, Date}
 import net.sf.sevenzipjbinding._
 
 
-sealed class CompressionEntry(val dataSize: Long, val source: ISequentialInStream)
+sealed class CompressionEntry(val dataSize: Long, val source: ISequentialInStream) extends AutoCloseable {
+  override def close(): Unit = source.close()
+}
 
 final case class CompressionEntryGZip(
                                        override val dataSize: Long,

@@ -17,4 +17,13 @@ final class ArchiveCreator7Z() extends {
   override protected type TItem = IOutItem7z
 
   override protected val archive: IOutCreateArchive7z = archivePrototype.asInstanceOf[IOutCreateArchive7z]
+
+  /**
+   * Final stage of the archive creation, it will create an archive
+   * with given entries. After this operation, this ArchiveCreator may
+   * not be reused.
+   *
+   * @param entries entries in the expected archive to be created.
+   */
+  override def compress(entries: Seq[CompressionEntry7Z]): Unit = super.compress(entries)
 }

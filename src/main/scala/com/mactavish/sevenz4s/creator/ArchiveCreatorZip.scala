@@ -19,6 +19,15 @@ final class ArchiveCreatorZip extends {
    * Cast and expose `archive` in order to set possible features.
    */
   override protected val archive: IOutCreateArchiveZip = archivePrototype.asInstanceOf[IOutCreateArchiveZip]
+
+  /**
+   * Final stage of the archive creation, it will create an archive
+   * with given entries. After this operation, this ArchiveCreator may
+   * not be reused.
+   *
+   * @param entries entries in the expected archive to be created.
+   */
+  override def compress(entries: Seq[CompressionEntryZip]): Unit = super.compress(entries)
 }
 
 
