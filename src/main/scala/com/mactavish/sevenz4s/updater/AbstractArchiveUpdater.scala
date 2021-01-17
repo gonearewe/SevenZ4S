@@ -1,8 +1,9 @@
 package com.mactavish.sevenz4s.updater
 
-import java.io.{File, RandomAccessFile}
+import java.io.RandomAccessFile
+import java.nio.file.Path
 
-import com.mactavish.sevenz4s.{CompressionEntry, SevenZ4SException}
+import com.mactavish.sevenz4s.{CompressionEntry, EntryProxy, SevenZ4SException}
 import net.sf.sevenzipjbinding._
 import net.sf.sevenzipjbinding.impl.{OutItemFactory, RandomAccessFileInStream, RandomAccessFileOutStream}
 import net.sf.sevenzipjbinding.util.ByteArrayStream
@@ -10,21 +11,24 @@ import net.sf.sevenzipjbinding.util.ByteArrayStream
 import scala.collection.mutable
 
 trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
+  this: E =>
+
   protected type TEntry <: CompressionEntry
   protected type TItem <: IOutItemBase
 
   protected val format: ArchiveFormat
-  private var source: Either[File, Array[Byte]] = _
+  private var source: Either[Path, Array[Byte]] = _
   //private var fromArchive: IInArchive = _
   //private var towardsArchive: IOutUpdateArchive[TItem] = _
-  private var dst: Either[File, Array[Byte]] = _
+  private var dst: Either[Path, Array[Byte]] = _
+  private var password: String = _
 
-  def from(src: File): E = {
+  def from(src: Path): E = {
     this.source = Left(src)
     if (this.dst == null) this.dst = this.source
     // down-cast to actual ArchiveUpdater in order to
     // enable chain methods calling on concrete ArchiveUpdater.
-    this.asInstanceOf[E]
+    this
   }
 
   def from(src: Array[Byte]): E = {
@@ -32,17 +36,22 @@ trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
     if (this.dst == null) this.dst = this.source
     // down-cast to actual ArchiveUpdater in order to
     // enable chain methods calling on concrete ArchiveUpdater.
-    this.asInstanceOf[E]
+    this
   }
 
-  def towards(dst: File): E = {
+  def towards(dst: Path): E = {
     this.dst = Left(dst)
-    this.asInstanceOf[E]
+    this
   }
 
   def towards(dst: Array[Byte]): E = {
     this.dst = Right(dst)
-    this.asInstanceOf[E]
+    this
+  }
+
+  def withPassword(passwd: String): E = {
+    this.password = passwd
+    this
   }
 
   def -=(entry: TEntry): E = remove(entry)
@@ -65,28 +74,27 @@ trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
           private var removalCnt = 0
 
           override def getItemInformation(i: Int, outItemFactory: OutItemFactory[TItem]): TItem = {
-            val item = outItemFactory.createOutItemAndCloneProperties(i)
+            val item = outItemFactory.createOutItemAndCloneProperties(i + removalCnt)
             val entry = adaptItemToEntry(item)
-            if (pred(entry)) {
+            if (entriesToRemove contains entry)
               removalCnt += 1
-              outItemFactory.createOutItem(i + removalCnt)
-            } else {
-              item
-            }
+            outItemFactory.createOutItem(i + removalCnt)
           }
+
+          override def cryptoGetTextPassword(): String = password
 
           // just removal, nothing to supply
           override def getStream(i: Int): ISequentialInStream = null
         })
-        this.asInstanceOf[E]
+        this
     }
   }
 
   def update(f: TEntry => TEntry): E = withArchive {
     (itemNum, archive, dst) =>
-      archive.updateItems(dst, itemNum, new DefaultIOutCreateCallback {
-        private val contentMap = mutable.HashMap[Int, ISequentialInStream]()
+      val contentMap = mutable.HashMap[Int, ISequentialInStream]()
 
+      archive.updateItems(dst, itemNum, new DefaultIOutCreateCallback {
         override def getItemInformation(
                                          i: Int,
                                          outItemFactory: OutItemFactory[TItem]
@@ -110,8 +118,62 @@ trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
         override def getStream(i: Int): ISequentialInStream = {
           contentMap(i)
         }
+
+        override def cryptoGetTextPassword(): String = password
       })
-      this.asInstanceOf[E]
+
+      contentMap.values.foreach(_.close()) // close user-provided streams
+      this
+  }
+
+  def ++=(entries: Seq[TEntry]): E = append(entries)
+
+  def append(entries: Seq[TEntry]): E = withArchive {
+    val entryProxy = new EntryProxy(entries)
+    (itemNum, archive, dst) =>
+      archive.updateItems(dst, itemNum + entries.size, new DefaultIOutCreateCallback {
+        override def getItemInformation(i: Int, outItemFactory: OutItemFactory[TItem]): TItem = {
+          if (i < itemNum) outItemFactory.createOutItem(i)
+          else {
+            entryProxy.next() match {
+              case Some(entry) => adaptEntryToItem(entry, outItemFactory.createOutItem())
+              case None =>
+                throw SevenZ4SException(s"only ${i - entries.size} entries provided, $itemNum expected")
+            }
+          }
+        }
+
+        override def getStream(i: Int): ISequentialInStream = {
+          if (!entryProxy.hasNext) entryProxy.reset() // reset cursor at the beginning
+          if (i < itemNum) null // existed items remain intact
+          else {
+            entryProxy.nextSource() match {
+              case Some(src) => src
+              case None =>
+                throw SevenZ4SException("not enough entries containing source are provided")
+            }
+          }
+        }
+
+        override def cryptoGetTextPassword(): String = password
+      })
+      this
+  }
+
+  def +=(entry: TEntry): E = append(entry)
+
+  def append(entry: TEntry): E = append(Seq(entry))
+
+  protected def adaptItemToEntry(item: TItem): TEntry
+
+  protected def adaptEntryToItem(entry: TEntry, template: TItem): TItem
+
+  trait DefaultIOutCreateCallback extends IOutCreateCallback[TItem] with ICryptoGetTextPassword {
+    override def setOperationResult(b: Boolean): Unit = {}
+
+    override def setTotal(l: Long): Unit = {}
+
+    override def setCompleted(l: Long): Unit = {}
   }
 
   /**
@@ -122,7 +184,7 @@ trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
     val (fromStream, fromStreamCloser: AutoCloseable) = this.source match {
       case Left(file) =>
         // must open in "r" mode
-        val f = new RandomAccessFile(file, "r")
+        val f = new RandomAccessFile(file.toFile, "r")
         new RandomAccessFileInStream(f) -> f
       case Right(array) =>
         // generate ByteArrayStream without copying and stored data length limit
@@ -132,7 +194,7 @@ trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
     val (outStream, outStreamCloser: AutoCloseable) = this.dst match {
       case Left(file) =>
         // must open in "rw" mode
-        val f = new RandomAccessFile(file, "rw")
+        val f = new RandomAccessFile(file.toFile, "rw")
         new RandomAccessFileOutStream(f) -> f
       case Right(array) =>
         val a = new ByteArrayStream(array, false, Int.MaxValue)
@@ -149,51 +211,5 @@ trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
     fromStreamCloser.close()
     res
   }
-
-  def ++=(entries: Seq[TEntry]): E = append(entries)
-
-  def append(entries: Seq[TEntry]): E = withArchive {
-    (itemNum, archive, dst) =>
-      archive.updateItems(dst, itemNum + entries.size, new DefaultIOutCreateCallback {
-        private var cur = entries
-
-        override def getItemInformation(i: Int, outItemFactory: OutItemFactory[TItem]): TItem = {
-          if (i < itemNum) outItemFactory.createOutItem(i)
-          else {
-            val item = adaptEntryToItem(cur.head, outItemFactory.createOutItem())
-            cur = cur.tail
-            item
-          }
-        }
-
-        override def getStream(i: Int): ISequentialInStream = {
-          if (i == 0) cur = entries // reset cursor
-          if (i < itemNum) null
-          else {
-            val stream = cur.head.source
-            cur = cur.tail
-            stream
-          }
-        }
-      })
-      this.asInstanceOf[E]
-  }
-
-  def +=(entry: TEntry): E = append(entry)
-
-  def append(entry: TEntry): E = append(Seq(entry))
-
-  protected def adaptItemToEntry(item: TItem): TEntry
-
-  protected def adaptEntryToItem(entry: TEntry, template: TItem): TItem
-
-  trait DefaultIOutCreateCallback extends IOutCreateCallback[TItem] {
-    override def setOperationResult(b: Boolean): Unit = {}
-
-    override def setTotal(l: Long): Unit = {}
-
-    override def setCompleted(l: Long): Unit = {}
-  }
-
 }
 

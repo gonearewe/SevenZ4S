@@ -5,8 +5,8 @@ import java.util.{Calendar, Date}
 import net.sf.sevenzipjbinding._
 
 
-sealed class CompressionEntry(val dataSize: Long, val source: ISequentialInStream) extends AutoCloseable {
-  override def close(): Unit = source.close()
+sealed abstract class CompressionEntry(val dataSize: Long, val source: ISequentialInStream) extends AutoCloseable {
+  override def close(): Unit = if (source != null) source.close()
 }
 
 final case class CompressionEntryGZip(
@@ -39,8 +39,8 @@ final case class CompressionEntry7Z(
                                      path: String,
                                      isDir: Boolean,
                                      lastModificationTime: Date = Calendar.getInstance().getTime,
-                                     isAnti: Boolean = false //  If true delete corresponding file or directory during
-                                     // extraction.
+                                     //  If true delete corresponding file or directory during extraction.
+                                     isAnti: Boolean = false
                                    ) extends CompressionEntry(dataSize, source)
 
 final case class CompressionEntryTar(

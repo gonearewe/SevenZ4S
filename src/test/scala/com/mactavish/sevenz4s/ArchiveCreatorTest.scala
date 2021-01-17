@@ -12,7 +12,7 @@ object ArchiveCreatorTest {
   def create7Z(): Unit = {
     val entries = SevenZ4S.get7ZEntriesFrom(path)
     new ArchiveCreator7Z()
-      .towards(path.resolveSibling("root.7z").toFile)
+      .towards(path.resolveSibling("root.7z"))
       .setLevel(5)
       .setSolid(true)
       .setHeaderEncryption(true)
@@ -30,19 +30,12 @@ object ArchiveCreatorTest {
     }.compress(entries)
   }
 
-  //def createZip():Unit = {
-  //  new ArchiveCreatorZip()
-  //    .towards(path.resolveSibling("root.zip").toFile)
-  //    .setLevel(2)
-  //    .compress(entries)
-  //}
-
   @Test
   def createBZip2(): Unit = {
     val entry = SevenZ4S.getBZip2EntryFrom(path.resolveSibling("single.txt"))
     new ArchiveCreatorBZip2()
       // bzip2 decides the content
-      .towards(path.resolveSibling("single.txt.bz2").toFile)
+      .towards(path.resolveSibling("single.txt.bz2"))
       .compress(entry)
   }
 }

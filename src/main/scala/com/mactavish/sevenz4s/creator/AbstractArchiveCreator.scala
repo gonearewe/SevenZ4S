@@ -1,13 +1,16 @@
 package com.mactavish.sevenz4s.creator
 
-import java.io.{File, RandomAccessFile}
+import java.io.RandomAccessFile
+import java.nio.file.Path
 
-import com.mactavish.sevenz4s.{CompressionEntry, ProgressTracker, SevenZ4SException}
+import com.mactavish.sevenz4s.{CompressionEntry, EntryProxy, ProgressTracker, SevenZ4SException}
 import net.sf.sevenzipjbinding._
 import net.sf.sevenzipjbinding.impl.{OutItemFactory, RandomAccessFileOutStream}
 import net.sf.sevenzipjbinding.util.ByteArrayStream
 
 trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
+  this: E =>
+
   protected type TEntry <: CompressionEntry
   protected type TItem <: IOutItemBase
 
@@ -90,7 +93,6 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
                                        outItemFactory: OutItemFactory[TItem]
                                      ): TItem = {
         val templateItem = outItemFactory.createOutItem()
-        if (i == 0) entryProxy.reset()
         entryProxy.next() match {
           case Some(entry) => adaptEntryToItem(entry, templateItem)
           case None =>
@@ -113,7 +115,7 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
         entryProxy.nextSource() match {
           case Some(src) => src
           case None =>
-            throw SevenZ4SException(s"only $i entries containing source provided, $numEntry expected")
+            throw SevenZ4SException("not enough entries containing source are provided")
         }
       }
 
@@ -123,6 +125,7 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
       override def cryptoGetTextPassword(): String = password
     })
 
+    entries.foreach(e => e.close())
     archivePrototype.close()
     if (this.file != null)
       this.file.close()
@@ -134,70 +137,36 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
     this.dst = new ByteArrayStream(dst, false, Int.MaxValue)
     // down-cast to actual ArchiveCreator in order to
     // enable chain methods calling on concrete ArchiveCreator.
-    this.asInstanceOf[E]
+    this
   }
 
-  def towards(dst: File): E = {
+  def towards(dst: Path): E = {
     if (dst == null) throw SevenZ4SException("dst has already been set")
 
     // must open in "rw" mode
-    this.file = new RandomAccessFile(dst, "rw")
+    this.file = new RandomAccessFile(dst.toFile, "rw")
     this.dst = new RandomAccessFileOutStream(this.file)
-    this.asInstanceOf[E]
+    this
   }
 
   def setPassword(passwd: String): E = {
     this.password = passwd
-    this.asInstanceOf[E]
+    this
   }
 
   def onProcess(f: ProgressTracker): E = {
     //if(onProcess==null) throw SevenZ4SException("onProcess callback function has already been set")
     this.onProcess = f
-    this.asInstanceOf[E]
+    this
   }
 
   def onEachEnd(f: Boolean => Unit): E = {
     //if(onEachEnd==null) throw SevenZ4SException("onEachEnd callback function has already been set")
     this.onEachEnd = f
-    this.asInstanceOf[E]
+    this
   }
 
   protected def adaptItemToEntry(item: TItem): TEntry
 
   protected def adaptEntryToItem(entry: TEntry, template: TItem): TItem
-
-  /**
-   * EntryProxy serves as an iterator of entries.
-   *
-   * @param producer entries to build from
-   */
-  private class EntryProxy(producer: Seq[TEntry]) {
-    private var remains: Seq[TEntry] = producer
-
-    def hasNext: Boolean = remains != Nil
-
-    def next(): Option[TEntry] = {
-      if (remains == Nil) None
-      else {
-        val a = remains.head
-        remains = remains.tail
-        Some(a)
-      }
-    }
-
-    def nextSource(): Option[ISequentialInStream] = {
-      next() match {
-        case Some(entry) =>
-          // directory doesn't contain source, skip
-          if (entry.source == null) nextSource() else Some(entry.source)
-        case None => None
-      }
-    }
-
-    def reset(): Unit = {
-      remains = producer
-    }
-  }
-
 }

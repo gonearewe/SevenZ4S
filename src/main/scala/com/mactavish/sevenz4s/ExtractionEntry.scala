@@ -1,6 +1,7 @@
 package com.mactavish.sevenz4s
 
-import java.io.{File, RandomAccessFile}
+import java.io.RandomAccessFile
+import java.nio.file.Path
 import java.util.Date
 
 import net.sf.sevenzipjbinding.ExtractOperationResult
@@ -10,6 +11,7 @@ import net.sf.sevenzipjbinding.util.ByteArrayStream
 
 final case class ExtractionEntry(
                                   private val item: ISimpleInArchiveItem,
+                                  private val passwd: String,
                                   originalSize: Long,
                                   packedSize: Long,
                                   path: String,
@@ -24,19 +26,15 @@ final case class ExtractionEntry(
                                   comment: String = "",
                                   CRC: Int) {
 
-  def extractTo(dst: File): ExtractOperationResult = extractTo(dst, null)
-
-  def extractTo(dst: File, passwd: String): ExtractOperationResult = {
-    val f = new RandomAccessFile(dst, "rw")
+  def extractTo(dst: Path): ExtractOperationResult = {
+    val f = new RandomAccessFile(dst.toFile, "rw")
     if (passwd == null)
       item.extractSlow(new RandomAccessFileOutStream(f))
     else
       item.extractSlow(new RandomAccessFileOutStream(f), passwd)
   }
 
-  def extractTo(dst: Array[Byte]): ExtractOperationResult = extractTo(dst, null)
-
-  def extractTo(dst: Array[Byte], passwd: String): ExtractOperationResult = {
+  def extractTo(dst: Array[Byte]): ExtractOperationResult = {
     val s = new ByteArrayStream(dst, false, Int.MaxValue)
     if (passwd == null)
       item.extractSlow(s)
