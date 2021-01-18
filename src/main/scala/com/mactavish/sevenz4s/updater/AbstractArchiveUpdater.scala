@@ -1,12 +1,11 @@
 package com.mactavish.sevenz4s.updater
 
-import java.io.RandomAccessFile
+import java.io.{Closeable, InputStream, OutputStream}
 import java.nio.file.Path
 
-import com.mactavish.sevenz4s.{CompressionEntry, EntryProxy, SevenZ4SException}
+import com.mactavish.sevenz4s.{CompressionEntry, EntryProxy, SevenZ4S, SevenZ4SException}
 import net.sf.sevenzipjbinding._
-import net.sf.sevenzipjbinding.impl.{OutItemFactory, RandomAccessFileInStream, RandomAccessFileOutStream}
-import net.sf.sevenzipjbinding.util.ByteArrayStream
+import net.sf.sevenzipjbinding.impl.OutItemFactory
 
 import scala.collection.mutable
 
@@ -17,39 +16,31 @@ trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
   protected type TItem <: IOutItemBase
 
   protected val format: ArchiveFormat
-  private var source: Either[Path, Array[Byte]] = _
-  //private var fromArchive: IInArchive = _
-  //private var towardsArchive: IOutUpdateArchive[TItem] = _
-  private var dst: Either[Path, Array[Byte]] = _
+  private var source: Either[Path, InputStream] = _
+  private var dst: Either[Path, OutputStream] = _
   private var password: String = _
 
-  def from(src: Path): E = {
-    this.source = Left(src)
-    if (this.dst == null) this.dst = this.source
-    // down-cast to actual ArchiveUpdater in order to
-    // enable chain methods calling on concrete ArchiveUpdater.
+  def from(src: Either[Path, InputStream]): E = {
+    if (src == null) throw SevenZ4SException("`from` doesn't accept null parameter")
+    this.source = src
+    this.source match {
+      case Left(path) =>
+        // if `src` comes from file, then `dst` is set the same as `src` by default
+        if (this.dst == null) this.dst = Left(path)
+      case Right(_) =>
+    }
     this
   }
 
-  def from(src: Array[Byte]): E = {
-    this.source = Right(src)
-    if (this.dst == null) this.dst = this.source
-    // down-cast to actual ArchiveUpdater in order to
-    // enable chain methods calling on concrete ArchiveUpdater.
-    this
-  }
+  def towards(dst: Either[Path, OutputStream]): E = {
+    if (dst == null) throw SevenZ4SException("`towards` doesn't accept null parameter")
 
-  def towards(dst: Path): E = {
-    this.dst = Left(dst)
-    this
-  }
-
-  def towards(dst: Array[Byte]): E = {
-    this.dst = Right(dst)
+    this.dst = dst
     this
   }
 
   def withPassword(passwd: String): E = {
+    if (passwd == null) throw SevenZ4SException("null passwd is meaningless")
     this.password = passwd
     this
   }
@@ -92,7 +83,8 @@ trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
 
   def update(f: TEntry => TEntry): E = withArchive {
     (itemNum, archive, dst) =>
-      val contentMap = mutable.HashMap[Int, ISequentialInStream]()
+      val contentMap = mutable.HashMap[Int, Either[Path, InputStream]]()
+      val entryStreams = mutable.HashSet[Closeable]()
 
       archive.updateItems(dst, itemNum, new DefaultIOutCreateCallback {
         override def getItemInformation(
@@ -100,12 +92,14 @@ trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
                                          outItemFactory: OutItemFactory[TItem]
                                        ): TItem = {
           val originalItem = outItemFactory.createOutItemAndCloneProperties(i)
-          //outItemFactory.createOutItem()
           val originalEntry = adaptItemToEntry(originalItem)
           val newEntry = f(originalEntry)
           if (newEntry == null) throw SevenZ4SException("mustn't return empty entry")
           val newItem = adaptEntryToItem(newEntry, originalItem)
           // properties changed
+          // TODO: For now, if `newEntry.source` is set, it'll also be marked as
+          // `properties changed` since we determine it through simple comparison.
+          // Though it is a big deal, we may improve it later.
           if (newEntry != originalEntry) newItem.setUpdateIsNewProperties(true)
           // content changed
           if (newEntry.source != null) {
@@ -115,22 +109,36 @@ trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
           newItem
         }
 
+        /**
+         * `getStream` is called after all(`numEntry` times) `getItemInformation` calls,
+         * but note that, it could be called for times fewer than `numEntry`,
+         * since it'll only be called on `i` whose corresponding item triggered `setUpdateIsNewData`,
+         * meaning `i` can be discontinuous (and truly so in most of time).
+         *
+         * @param i index of entry
+         * @return where 7Z engine gets data stream
+         */
         override def getStream(i: Int): ISequentialInStream = {
-          contentMap(i)
+          val stream = SevenZ4S.open(contentMap(i))
+          entryStreams.add(stream)
+          stream
         }
 
         override def cryptoGetTextPassword(): String = password
       })
 
-      contentMap.values.foreach(_.close()) // close user-provided streams
+      entryStreams.foreach(_.close()) // close user-provided streams
       this
   }
 
   def ++=(entries: Seq[TEntry]): E = append(entries)
 
   def append(entries: Seq[TEntry]): E = withArchive {
-    val entryProxy = new EntryProxy(entries)
     (itemNum, archive, dst) =>
+      val entryStreams = mutable.HashSet[Closeable]()
+      val entryProxy = new EntryProxy(entries)
+
+      // `updateItems` takes the number of items in NEW archive as a parameter
       archive.updateItems(dst, itemNum + entries.size, new DefaultIOutCreateCallback {
         override def getItemInformation(i: Int, outItemFactory: OutItemFactory[TItem]): TItem = {
           if (i < itemNum) outItemFactory.createOutItem(i)
@@ -138,7 +146,7 @@ trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
             entryProxy.next() match {
               case Some(entry) => adaptEntryToItem(entry, outItemFactory.createOutItem())
               case None =>
-                throw SevenZ4SException(s"only ${i - entries.size} entries provided, $itemNum expected")
+                throw SevenZ4SException(s"only ${i - itemNum} entries provided, ${entries.size} expected")
             }
           }
         }
@@ -148,7 +156,9 @@ trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
           if (i < itemNum) null // existed items remain intact
           else {
             entryProxy.nextSource() match {
-              case Some(src) => src
+              case Some(src) =>
+                entryStreams.add(src)
+                src
               case None =>
                 throw SevenZ4SException("not enough entries containing source are provided")
             }
@@ -157,6 +167,9 @@ trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
 
         override def cryptoGetTextPassword(): String = password
       })
+
+      // withArchive can't help with user-provided streams, close it here
+      entryStreams.foreach(_.close())
       this
   }
 
@@ -168,6 +181,11 @@ trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
 
   protected def adaptEntryToItem(entry: TEntry, template: TItem): TItem
 
+  /**
+   * `DefaultIOutCreateCallback` extends `IOutCreateCallback[TItem]`
+   * and `ICryptoGetTextPassword`, and it implements progress related behavior
+   * with simply doing nothing.
+   */
   trait DefaultIOutCreateCallback extends IOutCreateCallback[TItem] with ICryptoGetTextPassword {
     override def setOperationResult(b: Boolean): Unit = {}
 
@@ -177,38 +195,22 @@ trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
   }
 
   /**
-   * withArchive opens IOutUpdateArchive and supplies number of items, archive itself and
-   * IOutStream. Most importantly, it closes resources afterwards so that they can be reused.
+   * `withArchive` opens `IOutUpdateArchive` and supplies number of items, archive itself and
+   * `IOutStream`. Most importantly, it closes resources afterwards so that they can be reused.
    */
   private def withArchive[R](f: (Int, IOutUpdateArchive[TItem], IOutStream) => R): R = {
-    val (fromStream, fromStreamCloser: AutoCloseable) = this.source match {
-      case Left(file) =>
-        // must open in "r" mode
-        val f = new RandomAccessFile(file.toFile, "r")
-        new RandomAccessFileInStream(f) -> f
-      case Right(array) =>
-        // generate ByteArrayStream without copying and stored data length limit
-        val a = new ByteArrayStream(array, false, Int.MaxValue)
-        a -> a
-    }
-    val (outStream, outStreamCloser: AutoCloseable) = this.dst match {
-      case Left(file) =>
-        // must open in "rw" mode
-        val f = new RandomAccessFile(file.toFile, "rw")
-        new RandomAccessFileOutStream(f) -> f
-      case Right(array) =>
-        val a = new ByteArrayStream(array, false, Int.MaxValue)
-        a -> a
-    }
+    val fromStream: IInStream = SevenZ4S.open(this.source)
+    val outStream: IOutStream with Closeable = SevenZ4S.open(this.dst)
 
     val from = SevenZip.openInArchive(format, fromStream)
     val to = from.getConnectedOutArchive
     val res = f(from.getNumberOfItems, to.asInstanceOf[IOutUpdateArchive[TItem]], outStream)
 
-    outStreamCloser.close()
+    outStream.close()
     // InArchive needs to be closed, connected OutArchive will close automatically
     from.close()
-    fromStreamCloser.close()
+    fromStream.close()
+
     res
   }
 }

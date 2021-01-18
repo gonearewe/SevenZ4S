@@ -1,17 +1,15 @@
 package com.mactavish.sevenz4s
 
+import java.io.InputStream
+import java.nio.file.Path
 import java.util.{Calendar, Date}
 
-import net.sf.sevenzipjbinding._
 
-
-sealed abstract class CompressionEntry(val dataSize: Long, val source: ISequentialInStream) extends AutoCloseable {
-  override def close(): Unit = if (source != null) source.close()
-}
+sealed abstract class CompressionEntry(val dataSize: Long, val source: Either[Path, InputStream])
 
 final case class CompressionEntryGZip(
                                        override val dataSize: Long,
-                                       override val source: ISequentialInStream,
+                                       override val source: Either[Path, InputStream],
                                        path: String,
                                        lastModificationTime: Date = Calendar.getInstance().getTime
                                      ) extends CompressionEntry(dataSize, source) {
@@ -19,12 +17,12 @@ final case class CompressionEntryGZip(
 
 final case class CompressionEntryBZip2(
                                         override val dataSize: Long,
-                                        override val source: ISequentialInStream
+                                        override val source: Either[Path, InputStream]
                                       ) extends CompressionEntry(dataSize, source)
 
 final case class CompressionEntryZip(
                                       override val dataSize: Long,
-                                      override val source: ISequentialInStream,
+                                      override val source: Either[Path, InputStream],
                                       path: String,
                                       isDir: Boolean,
                                       lastModificationTime: Date = Calendar.getInstance().getTime,
@@ -35,7 +33,7 @@ final case class CompressionEntryZip(
 
 final case class CompressionEntry7Z(
                                      override val dataSize: Long,
-                                     override val source: ISequentialInStream,
+                                     override val source: Either[Path, InputStream],
                                      path: String,
                                      isDir: Boolean,
                                      lastModificationTime: Date = Calendar.getInstance().getTime,
@@ -45,7 +43,7 @@ final case class CompressionEntry7Z(
 
 final case class CompressionEntryTar(
                                       override val dataSize: Long,
-                                      override val source: ISequentialInStream,
+                                      override val source: Either[Path, InputStream],
                                       path: String,
                                       isDir: Boolean,
                                       lastModificationTime: Date = Calendar.getInstance().getTime,

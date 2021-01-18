@@ -1,12 +1,13 @@
 package com.mactavish.sevenz4s.creator
 
-import java.io.RandomAccessFile
+import java.io.{Closeable, OutputStream}
 import java.nio.file.Path
 
-import com.mactavish.sevenz4s.{CompressionEntry, EntryProxy, ProgressTracker, SevenZ4SException}
+import com.mactavish.sevenz4s._
 import net.sf.sevenzipjbinding._
-import net.sf.sevenzipjbinding.impl.{OutItemFactory, RandomAccessFileOutStream}
-import net.sf.sevenzipjbinding.util.ByteArrayStream
+import net.sf.sevenzipjbinding.impl.OutItemFactory
+
+import scala.collection.mutable
 
 trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
   this: E =>
@@ -14,7 +15,7 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
   protected type TEntry <: CompressionEntry
   protected type TItem <: IOutItemBase
 
-  private var dst: ISequentialOutStream = _
+  private var dst: Either[Path, OutputStream] = _
   /**
    * `archivePrototype` will be casted to specific type in subclasses
    * so that their features can be enabled.
@@ -22,16 +23,11 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
   protected val archivePrototype: IOutCreateArchive[TItem] =
     SevenZip.openOutArchive(format: ArchiveFormat).asInstanceOf[IOutCreateArchive[TItem]]
   /**
-   * If creator writes archive stream into file, `file` stores the handle
-   * so that it can be closed afterwards. If not, `file` remains null.
-   */
-  private var file: RandomAccessFile = _
-  /**
    * If `password` is set, then the archive will be encrypted
    * with given password.
    */
   private var password: String = _
-  private var onProcess: ProgressTracker = (_, _) => {}
+  private var onProcess: ProgressTracker = ProgressTracker.empty
   private var onEachEnd: Boolean => Unit = _ => {}
 
   /**
@@ -71,15 +67,20 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
    * @param entries entries in the expected archive to be created.
    */
   protected def compress(entries: Seq[TEntry]): Unit = {
-    if (dst == null) throw SevenZ4SException("archive output not set, did you call `towards`?")
+    if (this.usedOnce)
+      throw SevenZ4SException("you've called `compress`, `ArchiveCreator` can't be reused")
+    if (this.dst == null)
+      throw SevenZ4SException("archive output not set, try to call `towards` before `compress`")
 
+    val output: IOutStream with Closeable = SevenZ4S.open(this.dst)
     val numEntry = entries.size
     val entryProxy = new EntryProxy(entries)
+    val entryStreams = mutable.HashSet[Closeable]()
 
     // print trace for debugging
-    //archivePrototype.setTrace(true)
+    // archivePrototype.setTrace(true)
 
-    archivePrototype.createArchive(dst, numEntry, new IOutCreateCallback[TItem] with ICryptoGetTextPassword {
+    archivePrototype.createArchive(output, numEntry, new IOutCreateCallback[TItem] with ICryptoGetTextPassword {
       private var total: Long = -1
 
       override def setTotal(l: Long): Unit = this.total = l
@@ -113,7 +114,9 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
       override def getStream(i: Int): ISequentialInStream = {
         if (!entryProxy.hasNext) entryProxy.reset()
         entryProxy.nextSource() match {
-          case Some(src) => src
+          case Some(src) =>
+            entryStreams.add(src)
+            src
           case None =>
             throw SevenZ4SException("not enough entries containing source are provided")
         }
@@ -125,43 +128,36 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
       override def cryptoGetTextPassword(): String = password
     })
 
-    entries.foreach(e => e.close())
-    archivePrototype.close()
-    if (this.file != null)
-      this.file.close()
+    entryStreams.foreach(c => c.close())
+    this.usedOnce = true
+    // compress can only be called once, safe to close the archive
+    this.archivePrototype.close()
+    output.close()
   }
 
-  def towards(dst: Array[Byte]): E = {
-    if (dst == null) throw SevenZ4SException("dst has already been set")
+  def towards(dst: Either[Path, OutputStream]): E = {
+    if (dst == null) throw SevenZ4SException("`towards` doesn't accept null parameter")
+    if (this.dst != null)
+      throw SevenZ4SException("`dst` has already been set, `towards` isn't allowed to be called for multiple times")
 
-    this.dst = new ByteArrayStream(dst, false, Int.MaxValue)
-    // down-cast to actual ArchiveCreator in order to
-    // enable chain methods calling on concrete ArchiveCreator.
-    this
-  }
-
-  def towards(dst: Path): E = {
-    if (dst == null) throw SevenZ4SException("dst has already been set")
-
-    // must open in "rw" mode
-    this.file = new RandomAccessFile(dst.toFile, "rw")
-    this.dst = new RandomAccessFileOutStream(this.file)
+    this.dst = dst
     this
   }
 
   def setPassword(passwd: String): E = {
+    if (passwd == null) throw SevenZ4SException("null passwd is meaningless")
     this.password = passwd
     this
   }
 
   def onProcess(f: ProgressTracker): E = {
-    //if(onProcess==null) throw SevenZ4SException("onProcess callback function has already been set")
+    if (f == null) throw SevenZ4SException("`onProcess` doesn't accept null callback")
     this.onProcess = f
     this
   }
 
   def onEachEnd(f: Boolean => Unit): E = {
-    //if(onEachEnd==null) throw SevenZ4SException("onEachEnd callback function has already been set")
+    if (f == null) throw SevenZ4SException("`onEachEnd` doesn't accept null callback")
     this.onEachEnd = f
     this
   }

@@ -7,7 +7,7 @@ import net.sf.sevenzipjbinding.ISequentialInStream
  *
  * @param producer entries to build from
  */
-class EntryProxy[TEntry <: CompressionEntry](producer: Seq[TEntry]) {
+private[sevenz4s] class EntryProxy[TEntry <: CompressionEntry](producer: Seq[TEntry]) {
   private var remains: Seq[TEntry] = producer
 
   def hasNext: Boolean = remains != Nil
@@ -24,8 +24,11 @@ class EntryProxy[TEntry <: CompressionEntry](producer: Seq[TEntry]) {
   def nextSource(): Option[ISequentialInStream] = {
     next() match {
       case Some(entry) =>
+        if (entry.source == null)
         // directory doesn't contain source, skip
-        if (entry.source == null) nextSource() else Some(entry.source)
+          nextSource()
+        else
+          Some(SevenZ4S.open(entry.source))
       case None => None
     }
   }

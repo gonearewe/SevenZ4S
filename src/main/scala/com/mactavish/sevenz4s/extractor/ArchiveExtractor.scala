@@ -1,63 +1,60 @@
 package com.mactavish.sevenz4s.extractor
 
-import java.io.RandomAccessFile
+import java.io.{Closeable, InputStream, RandomAccessFile}
 import java.nio.file.Path
 
-import com.mactavish.sevenz4s.{ExtractionEntry, ProgressTracker}
-import net.sf.sevenzipjbinding.impl.{RandomAccessFileInStream, RandomAccessFileOutStream}
-import net.sf.sevenzipjbinding.simple.ISimpleInArchiveItem
-import net.sf.sevenzipjbinding.util.ByteArrayStream
+import com.mactavish.sevenz4s.{ExtractionEntry, ProgressTracker, SevenZ4S, SevenZ4SException}
 import net.sf.sevenzipjbinding._
+import net.sf.sevenzipjbinding.impl.RandomAccessFileOutStream
+import net.sf.sevenzipjbinding.simple.ISimpleInArchiveItem
 
 import scala.collection.mutable
 
-final class ArchiveExtractor extends AutoCloseable {
-  private val closers = mutable.Seq[AutoCloseable]()
+final class ArchiveExtractor extends Closeable {
   private var source: IInStream = _
   private var archive: IInArchive = _
-  private var onProcess: ProgressTracker = _
-  private var onEachEnd: ExtractOperationResult => Unit = _
+  private var onProcess: ProgressTracker = ProgressTracker.empty
+  private var onEachEnd: ExtractOperationResult => Unit = _ => {}
   private var password: String = _
+  private var isClosed = false
 
-  def from(a: Path): ArchiveExtractor = {
-    val f = new RandomAccessFile(a.toFile, "r")
-    this.closers appended f
-    this.source = new RandomAccessFileInStream(f)
+  def from(src: Either[Path, InputStream]): ArchiveExtractor = {
+    if (src == null) throw SevenZ4SException("`from` doesn't accept null parameter")
+    this.source = SevenZ4S.open(src)
     this.archive = SevenZip.openInArchive(null, this.source)
-    this.closers appended this.archive
-    this
-  }
-
-  def from(a: Array[Byte]): ArchiveExtractor = {
-    this.source = new ByteArrayStream(a, false, Int.MaxValue)
-    this.archive = SevenZip.openInArchive(null, this.source)
-    this.closers appended this.archive
     this
   }
 
   def onProcess(f: ProgressTracker): ArchiveExtractor = {
-    //if(onProcess==null) throw SevenZ4SException("onProcess callback function has already been set")
+    if (f == null) throw SevenZ4SException("`onProcess` doesn't accept null callback")
     this.onProcess = f
     this
   }
 
   def onEachEnd(f: ExtractOperationResult => Unit): ArchiveExtractor = {
-    //if(onEachEnd==null) throw SevenZ4SException("onEachEnd callback function has already been set")
+    if (f == null) throw SevenZ4SException("`onEachEnd` doesn't accept null callback")
     this.onEachEnd = f
     this
   }
 
   def withPassword(passwd: String): ArchiveExtractor = {
+    if (passwd == null) throw SevenZ4SException("null passwd is meaningless")
     this.password = passwd
     this
   }
 
   def foreach(f: ExtractionEntry => Unit): ArchiveExtractor = {
-    archive.getSimpleInterface.getArchiveItems.foreach(item => f(adaptItemToEntry(item)))
+    checkArchive()
+    archive.getSimpleInterface.getArchiveItems.foreach(
+      item => f(adaptItemToEntry(item))
+    )
     this
   }
 
   def extractTo(dst: Path): ArchiveExtractor = {
+    checkArchive()
+    val filesToClose = mutable.HashSet[Closeable]()
+
     archive.extract(
       Array.tabulate(numberOfItems)(identity), false, new IArchiveExtractCallback with ICryptoGetTextPassword {
         private var total: Long = -1
@@ -67,7 +64,9 @@ final class ArchiveExtractor extends AutoCloseable {
           val singleArchiveFormats = Set(ArchiveFormat.BZIP2, ArchiveFormat.GZIP)
           if (singleArchiveFormats contains archive.getArchiveFormat) {
             if (extractAskMode == ExtractAskMode.EXTRACT) {
-              return new RandomAccessFileOutStream(new RandomAccessFile(dst.toFile, "rw"))
+              val f = new RandomAccessFile(dst.toFile, "rw")
+              filesToClose.add(f)
+              return new RandomAccessFileOutStream(f)
             } else return null
           }
 
@@ -79,7 +78,9 @@ final class ArchiveExtractor extends AutoCloseable {
             path.mkdirs()
             null
           } else {
-            new RandomAccessFileOutStream(new RandomAccessFile(path, "rw"))
+            val f = new RandomAccessFile(path, "rw")
+            filesToClose.add(f)
+            new RandomAccessFileOutStream(f)
           }
         }
 
@@ -93,7 +94,14 @@ final class ArchiveExtractor extends AutoCloseable {
 
         override def setCompleted(l: Long): Unit = if (this.total != -1) onProcess(l, this.total)
       })
+
+    filesToClose.foreach(_.close())
     this
+  }
+
+  def numberOfItems: Int = {
+    checkArchive()
+    this.archive.getNumberOfItems
   }
 
   private def adaptItemToEntry(item: ISimpleInArchiveItem): ExtractionEntry = {
@@ -118,7 +126,16 @@ final class ArchiveExtractor extends AutoCloseable {
     )
   }
 
-  def numberOfItems: Int = this.archive.getNumberOfItems
+  private def checkArchive(): Unit = {
+    if (archive == null || source == null)
+      throw SevenZ4SException("`archive` or `source` is not set, try to call `from` first")
+    if (isClosed)
+      throw SevenZ4SException("Extractor is already closed and can't be used anymore")
+  }
 
-  def close(): Unit = this.closers.foreach(c => c.close())
+  def close(): Unit = {
+    source.close()
+    archive.close()
+    isClosed = true
+  }
 }
