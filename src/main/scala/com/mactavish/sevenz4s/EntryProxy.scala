@@ -12,6 +12,11 @@ private[sevenz4s] class EntryProxy[TEntry <: CompressionEntry](producer: Seq[TEn
 
   def hasNext: Boolean = remains != Nil
 
+  /**
+   * Returns next entry and moves cursor one step forward.
+   *
+   * @return next entry
+   */
   def next(): Option[TEntry] = {
     if (remains == Nil) None
     else {
@@ -21,6 +26,12 @@ private[sevenz4s] class EntryProxy[TEntry <: CompressionEntry](producer: Seq[TEn
     }
   }
 
+  /**
+   * Iterates next entry whose source is non-null, and returns that
+   * source before move cursor one step forward.
+   *
+   * @return next non-null source
+   */
   def nextSource(): Option[ISequentialInStream] = {
     next() match {
       case Some(entry) =>
@@ -33,6 +44,9 @@ private[sevenz4s] class EntryProxy[TEntry <: CompressionEntry](producer: Seq[TEn
     }
   }
 
+  /**
+   * Resets the cursor to the origin.
+   */
   def reset(): Unit = {
     remains = producer
   }

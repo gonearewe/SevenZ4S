@@ -5,6 +5,9 @@ import com.mactavish.sevenz4s.adapter.AdapterZip
 import com.mactavish.sevenz4s.creator.ArchiveCreatorFeature._
 import net.sf.sevenzipjbinding._
 
+/**
+ * Concrete creator for Zip archives.
+ */
 final class ArchiveCreatorZip extends {
   /**
    * Use `early definition` syntax to make sure format get initialized before super trait.

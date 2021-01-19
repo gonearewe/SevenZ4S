@@ -2,7 +2,11 @@ package com.mactavish.sevenz4s.creator
 
 import net.sf.sevenzipjbinding.{IOutFeatureSetEncryptHeader, IOutFeatureSetLevel, IOutFeatureSetMultithreading, IOutFeatureSetSolid}
 
-object ArchiveCreatorFeature {
+/**
+ * Features for archive creators, each archive format
+ * only supports parts of these features.
+ */
+private[sevenz4s] object ArchiveCreatorFeature {
 
   trait SetEncryptHeader[T <: AbstractArchiveCreator[T] with SetEncryptHeader[T]] {
     this: T =>

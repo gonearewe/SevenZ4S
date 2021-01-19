@@ -4,7 +4,13 @@ import java.io.InputStream
 import java.nio.file.Path
 import java.util.{Calendar, Date}
 
-
+/**
+ * Representation for archive entry used during compression and update,
+ * it contains data source and specific properties.
+ *
+ * @param dataSize length of bytes of uncompressed data
+ * @param source   uncompressed data source
+ */
 sealed abstract class CompressionEntry(val dataSize: Long, val source: Either[Path, InputStream])
 
 final case class CompressionEntryGZip(

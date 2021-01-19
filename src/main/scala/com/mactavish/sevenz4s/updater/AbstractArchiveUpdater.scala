@@ -9,17 +9,48 @@ import net.sf.sevenzipjbinding.impl.OutItemFactory
 
 import scala.collection.mutable
 
-trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
+/**
+ * A skeleton for ArchiveUpdater, most methods and fields are implemented.
+ * ArchiveUpdater must set up a destination for output archive stream
+ * and a source where input archive stream comes from, and some configurations
+ * are optional. Each update operation contains complete steps of opening archive,
+ * processing and closing archive. Hooks are not supported by ArchiveUpdater
+ * since update operations usually finish quickly and leave little meaning
+ * to track.
+ *
+ * @tparam E subclass should pass it's own type here to enable chained method calls
+ */
+private[sevenz4s] trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
   this: E =>
 
   protected type TEntry <: CompressionEntry
   protected type TItem <: IOutItemBase
-
+  /**
+   * Subclasses should determine the format of this archive.
+   */
   protected val format: ArchiveFormat
+
   private var source: Either[Path, InputStream] = _
   private var dst: Either[Path, OutputStream] = _
+  /**
+   * If password is set, then the archive will be opened with given password.
+   */
   private var password: String = _
 
+  /**
+   * Specifies where archive stream comes from.
+   *
+   * For `Path`, it reads the given file and closes it afterwards during each operation.
+   * For `InputStream`, it reads all bytes from the input stream during each operation
+   * which costs O(N) both on space and time. Therefore, it's usually more
+   * efficient to pass `Path` when you intend to provide data from a file.
+   *
+   * Additionally, in the second case, remember to close `InputStream`
+   * on your own afterwards.
+   *
+   * @param src where archive stream comes from
+   * @return updater itself so that method calls can be chained
+   */
   def from(src: Either[Path, InputStream]): E = {
     if (src == null) throw SevenZ4SException("`from` doesn't accept null parameter")
     this.source = src
@@ -39,16 +70,57 @@ trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
     this
   }
 
+  /**
+   * Provides password for encrypted archive.
+   * Note that supplying no password for encrypted archive will result in
+   * a silent failure.
+   *
+   * @param passwd password
+   * @return updater itself so that method calls can be chained
+   */
   def withPassword(passwd: String): E = {
     if (passwd == null) throw SevenZ4SException("null passwd is meaningless")
     this.password = passwd
     this
   }
 
+  /**
+   * Alias for `remove`.
+   *
+   * Removes given entry from the archive.
+   *
+   * Note that given entry must equals exactly to one entry in the archive.
+   * It's recommended that the parameter is exactly pulled from
+   * the archive through other methods.
+   * Avoid constructing the entry by yourself.
+   *
+   * @param entry one entry to remove from the archive
+   * @return updater itself so that method calls can be chained
+   */
   def -=(entry: TEntry): E = remove(entry)
 
+  /**
+   * Removes given entry from the archive.
+   *
+   * Note that given entry must equals exactly to one entry in the archive.
+   * It's recommended that the parameter is exactly pulled from
+   * the archive through other methods.
+   * Avoid constructing the entry by yourself.
+   *
+   * @param entry one entry to remove from the archive
+   * @return updater itself so that method calls can be chained
+   */
   def remove(entry: TEntry): E = removeWhere(_ == entry)
 
+  /**
+   * Removes entries met given assumption from the archive.
+   *
+   * Each entry is supplied for assumption, the `source`
+   * property of supplied entries is null as it's meaningless here.
+   *
+   * @param pred assumption on each entry
+   * @return updater itself so that method calls can be chained
+   */
   def removeWhere(pred: TEntry => Boolean): E = {
     val entriesToRemove = mutable.Set[CompressionEntry]()
     // find all entries to be removed first, as we need to know the total number
@@ -81,6 +153,22 @@ trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
     }
   }
 
+  /**
+   * Iterates every entry and applies given update function.
+   *
+   * Update function takes each entry as input and ought to
+   * return one entry. If the returned entry contains non-null
+   * source, the inner entry will change its data to what comes
+   * from the given source. If the returned entry contains different
+   * properties from the original one, the inner entry will change its
+   * properties accordingly.
+   *
+   * Adding or deleting an entry which changes the number of entries is
+   * not supported here.
+   *
+   * @param f update function
+   * @return updater itself so that method calls can be chained
+   */
   def update(f: TEntry => TEntry): E = withArchive {
     (itemNum, archive, dst) =>
       val contentMap = mutable.HashMap[Int, Either[Path, InputStream]]()
@@ -131,9 +219,51 @@ trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
       this
   }
 
-  def ++=(entries: Seq[TEntry]): E = append(entries)
+  /**
+   * Alias for `append`.
+   *
+   * Appends given entry to the archive.
+   *
+   * @param entry entry to append
+   * @return updater itself so that method calls can be chained
+   */
+  def +=(entry: TEntry): E = append(entry)
 
-  def append(entries: Seq[TEntry]): E = withArchive {
+  /**
+   * Appends given entry to the archive.
+   *
+   * @param entry entry to append
+   * @return updater itself so that method calls can be chained
+   */
+  def append(entry: TEntry): E = append(Seq(entry))
+
+  /**
+   * Alias for `append`.
+   *
+   * Appends given entries to the archive.
+   *
+   * Note that some archive formats (bzip2, gzip) only supports compression
+   * of single archive entry (thus they're usually used along with tar).
+   * So `++=` with Seq[TEntry] is made protected, only those supporting
+   * multi-archive override it to public.
+   *
+   * @param entries entries to append
+   * @return updater itself so that method calls can be chained
+   */
+  protected def ++=(entries: Seq[TEntry]): E = append(entries)
+
+  /**
+   * Appends given entries to the archive.
+   *
+   * Note that some archive formats (bzip2, gzip) only supports compression
+   * of single archive entry (thus they're usually used along with tar).
+   * So `append` with Seq[TEntry] is made protected, only those supporting
+   * multi-archive override it to public.
+   *
+   * @param entries entries to append
+   * @return updater itself so that method calls can be chained
+   */
+  protected def append(entries: Seq[TEntry]): E = withArchive {
     (itemNum, archive, dst) =>
       val entryStreams = mutable.HashSet[Closeable]()
       val entryProxy = new EntryProxy(entries)
@@ -172,10 +302,6 @@ trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
       entryStreams.foreach(_.close())
       this
   }
-
-  def +=(entry: TEntry): E = append(entry)
-
-  def append(entry: TEntry): E = append(Seq(entry))
 
   protected def adaptItemToEntry(item: TItem): TEntry
 

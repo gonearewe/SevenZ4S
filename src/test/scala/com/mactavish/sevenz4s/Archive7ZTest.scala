@@ -1,6 +1,5 @@
 package com.mactavish.sevenz4s
 
-import java.io.File
 import java.nio.file.Files
 
 import com.mactavish.sevenz4s.Implicits._
@@ -14,25 +13,9 @@ import org.junit.jupiter.api.{Order, Test, TestMethodOrder}
 
 
 @TestMethodOrder(classOf[OrderAnnotation])
-object Archive7ZTest {
-  private val path = new File(getClass.getResource("/root").getFile).toPath
-
+object Archive7ZTest extends AbstractTest {
   @Test
   @Order(1)
-  def clearFolder(): Unit = {
-    def delete(path: File): Unit = {
-      if (path.isDirectory)
-        path.listFiles() foreach delete
-      Files.delete(path.toPath)
-    }
-
-    path.getParent.toFile.listFiles().filterNot { f =>
-      Set("root", "single.txt", "replace.txt", "expected") contains f.getName
-    }.foreach(f => delete(f))
-  }
-
-  @Test
-  @Order(2)
   def create7Z(): Unit = {
     val entries = SevenZ4S.get7ZEntriesFrom(path)
     new ArchiveCreator7Z()
@@ -56,7 +39,7 @@ object Archive7ZTest {
   }
 
   @Test
-  @Order(3)
+  @Order(2)
   def update7Z(): Unit = {
     val replacement = path.resolveSibling("replace.txt")
 
@@ -87,7 +70,7 @@ object Archive7ZTest {
   }
 
   @Test
-  @Order(4)
+  @Order(3)
   def extract7Z(): Unit = {
     new ArchiveExtractor()
       .from(path.resolveSibling("root.7z"))
@@ -103,10 +86,11 @@ object Archive7ZTest {
       // `extractTo` takes output folder `Path` as parameter
       // `onEachEnd` callback only triggers on `extractTo`
       .extractTo(path.resolveSibling("extraction"))
+      .close() // ArchiveExtractor requires closing
   }
 
   @Test
-  @Order(5)
+  @Order(4)
   def checkResults(): Unit = {
     // check single extraction result
     val bExpected = Files.readAllBytes(path.resolve("b.txt"))

@@ -4,6 +4,9 @@ import com.mactavish.sevenz4s.CompressionEntryGZip
 import com.mactavish.sevenz4s.adapter.AdapterGZip
 import net.sf.sevenzipjbinding.{ArchiveFormat, IOutItemGZip}
 
+/**
+ * Concrete updater for GZip archives.
+ */
 final class ArchiveUpdaterGZip extends AbstractArchiveUpdater[ArchiveUpdaterGZip]
   with AdapterGZip {
   override protected type TEntry = CompressionEntryGZip

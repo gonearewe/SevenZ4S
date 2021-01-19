@@ -9,7 +9,16 @@ import net.sf.sevenzipjbinding.impl.OutItemFactory
 
 import scala.collection.mutable
 
-trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
+/**
+ * A skeleton for `ArchiveCreator`, most methods and fields are implemented.
+ * `ArchiveCreator` must set up the destination for output archive stream,
+ * and some configurations are optional. Call `compress` with entries will
+ * trigger the actual compression procedure, where some hooks are provided.
+ *
+ * @tparam E subclass should pass it's own type here to enable
+ *           chained method calls
+ */
+private[sevenz4s] trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
   this: E =>
 
   protected type TEntry <: CompressionEntry
@@ -135,6 +144,15 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
     output.close()
   }
 
+  /**
+   * Set a destination for output archive stream, and you shouldn't reset it afterwards.
+   * Passing a `Path` results in creation of a new archive file,
+   * and passing an `OutputStream` will see the flush of stream, in which case
+   * we won't close it, you have to close the `OutputStream` on your own.
+   *
+   * @param dst the destination for output archive stream
+   * @return creator itself so that method calls can be chained
+   */
   def towards(dst: Either[Path, OutputStream]): E = {
     if (dst == null) throw SevenZ4SException("`towards` doesn't accept null parameter")
     if (this.dst != null)
@@ -144,6 +162,12 @@ trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
     this
   }
 
+  /**
+   * Sets up password protection for this archive.
+   *
+   * @param passwd non-nullable password to set up
+   * @return creator itself so that method calls can be chained
+   */
   def setPassword(passwd: String): E = {
     if (passwd == null) throw SevenZ4SException("null passwd is meaningless")
     this.password = passwd

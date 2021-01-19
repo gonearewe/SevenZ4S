@@ -5,7 +5,12 @@ import com.mactavish.sevenz4s.adapter.Adapter7Z
 import com.mactavish.sevenz4s.creator.ArchiveCreatorFeature.{SetEncryptHeader, SetLevel, SetMultithreading, SetSolid}
 import net.sf.sevenzipjbinding.{ArchiveFormat, IOutCreateArchive7z, IOutItem7z}
 
+/**
+ * Concrete creator for 7Z archives.
+ */
 final class ArchiveCreator7Z() extends {
+  // early definition must be used to ensure `AbstractArchiveCreator`
+  // knows exactly format to initialize `archivePrototype`
   override protected val format: ArchiveFormat = ArchiveFormat.SEVEN_ZIP
 } with AbstractArchiveCreator[ArchiveCreator7Z]
   with Adapter7Z

@@ -4,7 +4,13 @@ import com.mactavish.sevenz4s.CompressionEntryTar
 import com.mactavish.sevenz4s.adapter.AdapterTar
 import net.sf.sevenzipjbinding.{ArchiveFormat, IOutItemTar}
 
+/**
+ * Concrete creator for Tar archives.
+ */
 final class ArchiveCreatorTar extends {
+  /**
+   * Use `early definition` syntax to make sure format get initialized before super trait.
+   */
   override protected val format: ArchiveFormat = ArchiveFormat.TAR
 } with AbstractArchiveCreator[ArchiveCreatorTar]
   with AdapterTar {

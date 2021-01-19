@@ -3,10 +3,10 @@ package com.mactavish.sevenz4s.adapter
 import com.mactavish.sevenz4s.CompressionEntryZip
 import net.sf.sevenzipjbinding.IOutItemZip
 
-trait AdapterZip {
+trait AdapterZip extends AbstractAdapter[CompressionEntryZip, IOutItemZip] {
   protected def adaptItemToEntry(item: IOutItemZip): CompressionEntryZip = {
     CompressionEntryZip(
-      source = null,
+      source = null, // source is not required for library generated entries
       dataSize = item.getDataSize,
       path = item.getPropertyPath,
       lastModificationTime = item.getPropertyLastModificationTime,

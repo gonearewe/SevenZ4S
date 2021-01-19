@@ -3,10 +3,10 @@ package com.mactavish.sevenz4s.adapter
 import com.mactavish.sevenz4s.CompressionEntryBZip2
 import net.sf.sevenzipjbinding.IOutItemBZip2
 
-trait AdapterBZip2 {
+trait AdapterBZip2 extends AbstractAdapter[CompressionEntryBZip2, IOutItemBZip2] {
   protected def adaptItemToEntry(item: IOutItemBZip2): CompressionEntryBZip2 = {
     CompressionEntryBZip2(
-      source = null,
+      source = null, // source is not required for library generated entries
       dataSize = item.getDataSize
     )
   }
