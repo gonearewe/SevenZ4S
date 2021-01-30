@@ -1,5 +1,6 @@
 # SevenZ4S
 
+[![Maven Central](https://maven-badges.herokuapp.com/maven-central/fun.mactavish/sevenz4s/badge.svg)](https://maven-badges.herokuapp.com/maven-central/fun.mactavish/sevenz4s/)
 [![GitHub stars](https://img.shields.io/github/stars/gonearewe/SevenZ4S.svg?label=Stars)](https://github.com/gonearewe/SevenZ4S)
 [![GitHub forks](https://img.shields.io/github/forks/gonearewe/SevenZ4S.svg?label=Fork)](https://github.com/gonearewe/SevenZ4S)
 [![GitHub issues](https://img.shields.io/github/issues/gonearewe/SevenZ4S.svg?label=Issue)](https://github.com/gonearewe/SevenZ4S/issues)
@@ -7,7 +8,7 @@
 
 # Introduction
 
-This a 7Z compression library for Scala, providing simple api to create, update
+This a 7Z compression library for Scala(v2.13), providing simple api to create, update
 and extract archives of different formats.
 
 This library offers compression and update abilities for 5 formats:
@@ -69,6 +70,9 @@ in a more efficient way. Use `ArchiveUpdater` to update archive instead of
 extract-modify-compress by yourself.
 
 ```scala
+  // import ...
+  import fun.mactavish.sevenz4s.Implicits._
+  
   def update7Z(): Unit = {
     val replacement = path.resolveSibling("replace.txt")
 

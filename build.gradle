@@ -25,6 +25,17 @@ test {
     useJUnitPlatform()
 }
 
+java {
+    withJavadocJar()
+    withSourcesJar()
+}
+
+javadoc {
+    if(JavaVersion.current().isJava9Compatible()) {
+        options.addBooleanOption('html5', true)
+    }
+}
+
 publishing {
     publications {
         maven(MavenPublication) {
@@ -33,14 +44,12 @@ publishing {
 
             pom {
                 name = 'SevenZ4S'
-                description = 'This a 7Z compression library for Scala, ' +
-                        'providing simple api to create, update and ' +
-                        'extract archives of different formats.'
+                description = 'A 7Z compression library for Scala.'
                 url = 'https://github.com/gonearewe/SevenZ4S'
                 licenses {
                     license {
-                        name = 'GNU LESSER GENERAL PUBLIC LICENSE, Version 3'
-                        url = 'https://www.gnu.org/licenses/lgpl-3.0.txt'
+                        name = 'GNU LESSER GENERAL PUBLIC LICENSE, Version 2.1'
+                        url = 'https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html'
                     }
                 }
                 developers {
@@ -62,12 +71,15 @@ publishing {
             def releasesRepoUrl = "https://oss.sonatype.org/service/local/staging/deploy/maven2"
             def snapshotsRepoUrl = "https://oss.sonatype.org/content/repositories/snapshots"
             url = version.endsWith('SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
+            credentials {
+                username "abcde"
+                password "xxxxx"
+            }
         }
     }
 }
 
 signing {
-    useGpgCmd()
     sign publishing.publications.maven
 }
 

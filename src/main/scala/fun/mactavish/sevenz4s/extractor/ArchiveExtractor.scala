@@ -146,6 +146,9 @@ final class ArchiveExtractor extends Closeable {
             path.mkdirs()
             null
           } else {
+            if (!path.getParentFile.exists())
+              path.getParentFile.mkdirs()
+
             val f = new RandomAccessFile(path, "rw")
             filesToClose.add(f)
             new RandomAccessFileOutStream(f)
