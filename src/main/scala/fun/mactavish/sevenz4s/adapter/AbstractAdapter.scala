@@ -15,7 +15,7 @@ import net.sf.sevenzipjbinding.IOutItemBase
  * @tparam T subclass of `CompressionEntry`
  * @tparam R subclass of `IOutItemBase`
  */
-trait AbstractAdapter[T <: CompressionEntry, R <: IOutItemBase] {
+private[sevenz4s] trait AbstractAdapter[T <: CompressionEntry, R <: IOutItemBase] {
   /**
    * `adaptEntryToItem` is an adapter from `CompressionEntry` to `IOutItem`,
    * it requires an default instance of `IOutItem` as a template so that

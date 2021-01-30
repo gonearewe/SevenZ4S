@@ -6,8 +6,10 @@ import net.sf.sevenzipjbinding.{ArchiveFormat, IOutItemZip}
 
 /**
  * Concrete updater for Zip archives.
+ *
+ * TODO: There're some critical problems with `ArchiveUpdaterZip`.
  */
-final class ArchiveUpdaterZip extends AbstractArchiveUpdater[ArchiveUpdaterZip]
+private[sevenz4s] final class ArchiveUpdaterZip extends AbstractArchiveUpdater[ArchiveUpdaterZip]
   with AdapterZip {
   override protected type TEntry = CompressionEntryZip
   override protected type TItem = IOutItemZip

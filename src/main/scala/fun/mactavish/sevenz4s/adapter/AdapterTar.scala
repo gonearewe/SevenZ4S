@@ -3,7 +3,7 @@ package fun.mactavish.sevenz4s.adapter
 import fun.mactavish.sevenz4s.CompressionEntryTar
 import net.sf.sevenzipjbinding.IOutItemTar
 
-trait AdapterTar extends AbstractAdapter[CompressionEntryTar, IOutItemTar] {
+private[sevenz4s] trait AdapterTar extends AbstractAdapter[CompressionEntryTar, IOutItemTar] {
   protected def adaptItemToEntry(item: IOutItemTar): CompressionEntryTar = {
     CompressionEntryTar(
       source = null, // source is not required for library generated entries
