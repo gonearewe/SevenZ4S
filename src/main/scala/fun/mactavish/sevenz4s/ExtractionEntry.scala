@@ -38,15 +38,15 @@ final case class ExtractionEntry(
    * entire archive. `extractTo` can be called for multiple times.
    *
    * @param dst the destination for output archive entry stream
-   * @return enumeration of `ExtractOperationResult`
+   * @return boolean indicating whether the extraction succeeded
    */
-  def extractTo(dst: Either[Path, OutputStream]): ExtractOperationResult = {
+  def extractTo(dst: Either[Path, OutputStream]): Boolean = {
     val s = SevenZ4S.open(dst)
     val res = if (passwd == null)
       item.extractSlow(s)
     else
       item.extractSlow(s, passwd)
     s.close()
-    res
+    res == ExtractOperationResult.OK
   }
 }
