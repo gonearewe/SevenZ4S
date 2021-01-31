@@ -42,6 +42,8 @@ Object `SevenZ4S` provides some utils that may help gain entries from local
 file system.
 
 ```scala
+  val path: Path = new File(getClass.getResource("/root").getFile).toPath
+
   def create7Z(): Unit = {
     val entries = SevenZ4S.get7ZEntriesFrom(path)
     new ArchiveCreator7Z()
@@ -126,3 +128,21 @@ autodetect the format of input archive.
       .close() // ArchiveExtractor requires closing
   }
 ```
+
+If all you want is simply compressing and extracting files on local file
+system, the object `SevenZ4S` provides super useful utilities.
+
+```scala
+  val path: Path = new File(getClass.getResource("/root").getFile).toPath
+
+  def test7Z(): Unit = {
+    val output = path.resolveSibling("util test/7z")
+
+    SevenZ4S.compress(ArchiveFormat.SEVEN_Z, path, output)
+    val f = output.resolve("root.7z")
+
+    SevenZ4S.extract(f, output)
+  }
+```
+
+Refer to the test cases and test resources for more details.
