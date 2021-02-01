@@ -3,7 +3,7 @@ package fun.mactavish.sevenz4s.updater
 import java.io.{Closeable, InputStream, OutputStream}
 import java.nio.file.Path
 
-import fun.mactavish.sevenz4s.{CompressionEntry, EntryProxy, SevenZ4S, SevenZ4SException}
+import fun.mactavish.sevenz4s.{CompressionEntry, SevenZ4S, SevenZ4SException}
 import net.sf.sevenzipjbinding._
 import net.sf.sevenzipjbinding.impl.OutItemFactory
 
@@ -266,31 +266,25 @@ private[sevenz4s] trait AbstractArchiveUpdater[E <: AbstractArchiveUpdater[E]] {
   protected def append(entries: Seq[TEntry]): E = withArchive {
     (itemNum, archive, dst) =>
       val entryStreams = mutable.HashSet[Closeable]()
-      val entryProxy = new EntryProxy(entries)
+      val entries_ = entries.toIndexedSeq
 
       // `updateItems` takes the number of items in NEW archive as a parameter
-      archive.updateItems(dst, itemNum + entries.size, new DefaultIOutCreateCallback {
+      archive.updateItems(dst, itemNum + entries_.size, new DefaultIOutCreateCallback {
         override def getItemInformation(i: Int, outItemFactory: OutItemFactory[TItem]): TItem = {
           if (i < itemNum) outItemFactory.createOutItem(i)
           else {
-            entryProxy.next() match {
-              case Some(entry) => adaptEntryToItem(entry, outItemFactory.createOutItem())
-              case None =>
-                throw SevenZ4SException(s"only ${i - itemNum} entries provided, ${entries.size} expected")
-            }
+            adaptEntryToItem(entries_(i - itemNum), outItemFactory.createOutItem())
           }
         }
 
         override def getStream(i: Int): ISequentialInStream = {
-          if (!entryProxy.hasNext) entryProxy.reset() // reset cursor at the beginning
           if (i < itemNum) null // existed items remain intact
           else {
-            entryProxy.nextSource() match {
-              case Some(src) =>
-                entryStreams.add(src)
-                src
-              case None =>
-                throw SevenZ4SException("not enough entries containing source are provided")
+            if (entries_(i - itemNum).source == null) null
+            else {
+              val src = SevenZ4S.open(entries_(i - itemNum).source)
+              entryStreams.add(src)
+              src
             }
           }
         }

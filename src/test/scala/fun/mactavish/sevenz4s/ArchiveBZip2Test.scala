@@ -5,7 +5,6 @@ import java.nio.file.Files
 import fun.mactavish.sevenz4s.Implicits._
 import fun.mactavish.sevenz4s.creator.ArchiveCreatorBZip2
 import fun.mactavish.sevenz4s.extractor.ArchiveExtractor
-import fun.mactavish.sevenz4s.updater.ArchiveUpdaterBZip2
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.MethodOrderer.OrderAnnotation
 import org.junit.jupiter.api.{Order, Test, TestMethodOrder}
@@ -23,18 +22,7 @@ object ArchiveBZip2Test extends AbstractTest {
   }
 
   @Test
-  //@Disabled
   @Order(2)
-  def updateBZip2(): Unit = {
-    // this is actually copy
-    new ArchiveUpdaterBZip2()
-      .from(path.resolveSibling("single.txt.bz2"))
-      .towards(path.resolveSibling("new.txt.bz2"))
-      .update(identity) // update nothing
-  }
-
-  @Test
-  @Order(3)
   def extractBZip2(): Unit = {
     new ArchiveExtractor()
       .from(path.resolveSibling("single.txt.bz2"))
@@ -44,7 +32,7 @@ object ArchiveBZip2Test extends AbstractTest {
   }
 
   @Test
-  @Order(4)
+  @Order(3)
   def checkResult(): Unit = {
     val expected = Files.readAllBytes(path.resolveSibling("single.txt"))
     val found = Files.readAllBytes(path.resolveSibling("single extraction.txt"))

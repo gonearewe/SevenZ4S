@@ -3,7 +3,7 @@ package fun.mactavish.sevenz4s.creator
 import java.io.{Closeable, OutputStream}
 import java.nio.file.Path
 
-import fun.mactavish.sevenz4s.{CompressionEntry, EntryProxy, SevenZ4S, SevenZ4SException}
+import fun.mactavish.sevenz4s.{CompressionEntry, SevenZ4S, SevenZ4SException}
 import net.sf.sevenzipjbinding._
 import net.sf.sevenzipjbinding.impl.OutItemFactory
 
@@ -82,14 +82,13 @@ private[sevenz4s] trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
       throw SevenZ4SException("archive output not set, try to call `towards` before `compress`")
 
     val output: IOutStream with Closeable = SevenZ4S.open(this.dst)
-    val numEntry = entries.size
-    val entryProxy = new EntryProxy(entries)
+    val entries_ = entries.toIndexedSeq
     val entryStreams = mutable.HashSet[Closeable]()
 
     // print trace for debugging
     // archivePrototype.setTrace(true)
 
-    archivePrototype.createArchive(output, numEntry, new IOutCreateCallback[TItem] with ICryptoGetTextPassword {
+    archivePrototype.createArchive(output, entries_.size, new IOutCreateCallback[TItem] with ICryptoGetTextPassword {
       private var total: Long = -1
 
       override def setTotal(l: Long): Unit = this.total = l
@@ -108,15 +107,14 @@ private[sevenz4s] trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
                                        outItemFactory: OutItemFactory[TItem]
                                      ): TItem = {
         val templateItem = outItemFactory.createOutItem()
-        entryProxy.next() match {
-          case Some(entry) => adaptEntryToItem(entry, templateItem)
-          case None =>
-            throw SevenZ4SException(s"only $i entries provided, $numEntry expected")
-        }
+        adaptEntryToItem(entries_(i), templateItem)
       }
 
       /**
-       * `getStream` is called after all(`numEntry` times) `getItemInformation` calls,
+       * For `Tar` format, the order of `getStream` and `getItemInformation`
+       * method calls is complex.
+       *
+       * For other formats, `getStream` is called after all(`numEntry` times) `getItemInformation` calls,
        * but note that, it could be called for times fewer than `numEntry`,
        * since directory entry (whose `isDir` == true) will be skipped, meaning
        * `i` can be discontinuous. And that's why we use `entryProxy.nextSource()`
@@ -126,13 +124,13 @@ private[sevenz4s] trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
        * @return where 7Z engine gets data stream
        */
       override def getStream(i: Int): ISequentialInStream = {
-        if (!entryProxy.hasNext) entryProxy.reset()
-        entryProxy.nextSource() match {
-          case Some(src) =>
-            entryStreams.add(src)
-            src
-          case None =>
-            throw SevenZ4SException("not enough entries containing source are provided")
+        if (entries_(i).source == null) {
+          // for `Tar` format, no index will be skipped, provide null explicitly
+          null
+        } else {
+          val src = SevenZ4S.open(entries_(i).source)
+          entryStreams.add(src)
+          src
         }
       }
 
@@ -140,7 +138,9 @@ private[sevenz4s] trait AbstractArchiveCreator[E <: AbstractArchiveCreator[E]] {
        * If null is passed, simply means no password, and it won't crash at runtime.
        */
       override def cryptoGetTextPassword(): String = password
-    })
+    }
+
+    )
 
     entryStreams.foreach(c => c.close())
     this.usedOnce = true

@@ -2,9 +2,11 @@ package fun.mactavish.sevenz4s
 
 import java.io._
 import java.nio.file._
-import java.nio.file.attribute.{BasicFileAttributes, FileOwnerAttributeView, PosixFileAttributes}
+import java.nio.file.attribute.{BasicFileAttributes, FileOwnerAttributeView}
 import java.util.{Calendar, Date}
 
+import fun.mactavish.sevenz4s.creator._
+import fun.mactavish.sevenz4s.extractor.ArchiveExtractor
 import net.sf.sevenzipjbinding.impl.{RandomAccessFileInStream, RandomAccessFileOutStream}
 import net.sf.sevenzipjbinding.util.ByteArrayStream
 import net.sf.sevenzipjbinding.{IInStream, IOutStream}
@@ -12,9 +14,76 @@ import net.sf.sevenzipjbinding.{IInStream, IOutStream}
 import scala.collection.mutable
 
 /**
- * Provides some util functions.
+ * Provides some utility functions.
  */
 object SevenZ4S {
+  /**
+   * Useful utility function to compress archive on local file system.
+   *
+   * @param format specifies the format of wanted archive
+   * @param from   path of the directory or the file to be compressed,
+   *               `GZip` and `BZip2` format can only compress single file
+   * @param to     path of directory where the generated archive to be put into, the name
+   *               of the archive will be `from`'s base name plus format-specific extension name,
+   *               if `to` doesn't exist yet, it will be automatically created
+   */
+  def compress(format: CreatableArchiveFormat, from: Path, to: Path): Unit = {
+    format match {
+      case ArchiveFormat.SEVEN_Z =>
+        val name = to.resolve(from.getFileName + ".7z")
+        new ArchiveCreator7Z().towards(Left(name)).compress(get7ZEntriesFrom(from))
+      case ArchiveFormat.ZIP =>
+        val name = to.resolve(from.getFileName + ".zip")
+        new ArchiveCreatorZip().towards(Left(name)).compress(getZipEntriesFrom(from))
+      case ArchiveFormat.TAR =>
+        val name = to.resolve(from.getFileName + ".tar")
+        new ArchiveCreatorTar().towards(Left(name)).compress(getTarEntriesFrom(from))
+      case ArchiveFormat.GZIP =>
+        val name = to.resolve(from.getFileName + ".gz")
+        new ArchiveCreatorGZip().towards(Left(name)).compress(getGZipEntryFrom(from))
+      case ArchiveFormat.BZIP2 =>
+        val name = to.resolve(from.getFileName + ".bz2")
+        new ArchiveCreatorBZip2().towards(Left(name)).compress(getBZip2EntryFrom(from))
+    }
+  }
+
+  /**
+   * Useful utility function to extract archive on local file system.
+   *
+   * @param from path of the archive file
+   * @param to   path of directory where the archive's content extracts into,
+   *             if `to` doesn't exist yet, it will be automatically created
+   */
+  def extract(from: Path, to: Path): Unit = {
+    val dst = if (formatOf(Left(from)).isInstanceOf[SingleArchiveFormat]) {
+      // trip the file extension
+      val name = from.toFile.getName.split('.').init.mkString(".")
+      // the path of the single extraction file
+      to.resolve(name).toFile.toPath
+    } else to
+
+    new ArchiveExtractor()
+      .from(Left(from))
+      .extractTo(dst)
+      .close()
+  }
+
+  /**
+   * Gets the format of given archive.
+   *
+   * If you already obtain an instance of `ArchiveExtractor`, use
+   * its `archiveFormat` method instead.
+   *
+   * @param archive archive source
+   * @return the enumeration of `ArchiveFormat`
+   */
+  def formatOf(archive: Either[Path, InputStream]): ArchiveFormat = {
+    val extractor = new ArchiveExtractor().from(archive)
+    val ans = extractor.archiveFormat
+    extractor.close()
+    ans
+  }
+
   /**
    * Generates a `CompressionEntry7Z` from given file or directory path.
    *
@@ -128,9 +197,10 @@ object SevenZ4S {
   }
 
   private def getTarEntryFrom(f: Path, root: Path): CompressionEntryTar = {
-    // TODO: I haven't tested these two properties, be careful
     val user = Files.getFileAttributeView(f, classOf[FileOwnerAttributeView]).getOwner.getName
-    val group = Files.readAttributes(f, classOf[PosixFileAttributes], LinkOption.NOFOLLOW_LINKS).group.getName
+    // TODO: group access fails, I don't know how to get this property
+    //val group = Files.readAttributes(f, classOf[PosixFileAttributes], LinkOption.NOFOLLOW_LINKS).group.getName
+    val group = ""
     if (f.toFile.isDirectory) {
       CompressionEntryTar(
         dataSize = 0,
@@ -188,7 +258,7 @@ object SevenZ4S {
   }
 
   /**
-   * Util to open `Path` or `InputStream`.
+   * Utility to open `Path` or `InputStream`.
    *
    * For `Path`, it creates a `RandomAccessFileInStream`,
    * and for `InputStream`, it creates `ByteArrayStream` and
@@ -218,9 +288,10 @@ object SevenZ4S {
   }
 
   /**
-   * Util to open `Path` or `OutputStream`.
+   * Utility to open `Path` or `OutputStream`.
    *
-   * For `Path`, it creates a `RandomAccessFileOutStream`,
+   * For `Path`, it creates a `RandomAccessFileOutStream` and possibly non-existed
+   * parent directory,
    * and for `OutputStream`, it creates `ByteArrayStream` and promises to
    * flush data into given `OutputStream` on close.
    *
@@ -233,6 +304,8 @@ object SevenZ4S {
   private[sevenz4s] def open(in: Either[Path, OutputStream]): IOutStream with Closeable = {
     in match {
       case Left(f) =>
+        if (!Files.exists(f.getParent))
+          f.getParent.toFile.mkdirs()
         // out-stream requires `RandomAccessFile` opening in "rw" mode
         val file = new RandomAccessFile(f.toFile, "rw")
         new RandomAccessFileOutStream(file) with Closeable {

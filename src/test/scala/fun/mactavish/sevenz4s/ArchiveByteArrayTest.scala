@@ -1,11 +1,10 @@
 package fun.mactavish.sevenz4s
 
-import java.io.{ByteArrayInputStream, ByteArrayOutputStream, OutputStream}
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 
 import fun.mactavish.sevenz4s.Implicits._
-import fun.mactavish.sevenz4s.creator.ArchiveCreatorBZip2
+import fun.mactavish.sevenz4s.creator.ArchiveCreatorGZip
 import fun.mactavish.sevenz4s.extractor.ArchiveExtractor
-import fun.mactavish.sevenz4s.updater.ArchiveUpdaterBZip2
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Test
 
@@ -19,20 +18,15 @@ object ArchiveByteArrayTest {
     val compression = new ByteArrayOutputStream()
     val dst = new ByteArrayOutputStream()
 
-    new ArchiveCreatorBZip2()
+    new ArchiveCreatorGZip()
       .towards(compression)
       .onProcess((completed, total) => println(s"$completed of $total"))
       .onEachEnd(println(_))
-      .compress(CompressionEntryBZip2(
+      .compress(CompressionEntryGZip(
         dataSize = src.length,
-        source = new ByteArrayInputStream(src)
+        source = new ByteArrayInputStream(src),
+        path = "bytes"
       ))
-
-    // pure pressure test for Updater
-    new ArchiveUpdaterBZip2()
-      .from(new ByteArrayInputStream(compression.toByteArray))
-      .towards(OutputStream.nullOutputStream())
-      .update(identity) // update nothing
 
     new ArchiveExtractor()
       .from(new ByteArrayInputStream(compression.toByteArray))

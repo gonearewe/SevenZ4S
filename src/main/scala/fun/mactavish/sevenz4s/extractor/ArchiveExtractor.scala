@@ -3,7 +3,7 @@ package fun.mactavish.sevenz4s.extractor
 import java.io.{Closeable, InputStream, OutputStream, RandomAccessFile}
 import java.nio.file.Path
 
-import fun.mactavish.sevenz4s.{ExtractionEntry, SevenZ4S, SevenZ4SException}
+import fun.mactavish.sevenz4s.{ExtractionEntry, SevenZ4S, SevenZ4SException, SingleArchiveFormat, ArchiveFormat => Format}
 import net.sf.sevenzipjbinding._
 import net.sf.sevenzipjbinding.impl.RandomAccessFileOutStream
 import net.sf.sevenzipjbinding.simple.ISimpleInArchiveItem
@@ -18,11 +18,6 @@ import scala.collection.mutable
  * and have no ideas whether user is still using the streams.
  */
 final class ArchiveExtractor extends Closeable {
-  /**
-   * Formats that only supports single item
-   */
-  private val singleArchiveFormats = Set(ArchiveFormat.BZIP2, ArchiveFormat.GZIP)
-
   private var source: IInStream = _
   private var archive: IInArchive = _
   private var onProcess: (Long, Long) => Unit = (_, _) => {}
@@ -130,8 +125,11 @@ final class ArchiveExtractor extends Closeable {
 
         override def getStream(index: Int, extractAskMode: ExtractAskMode): ISequentialOutStream = {
           // formats that only supports single item usually lack `isDir` and `path` property
-          if (singleArchiveFormats contains archive.getArchiveFormat) {
+          if (archiveFormat.isInstanceOf[SingleArchiveFormat]) {
             if (extractAskMode == ExtractAskMode.EXTRACT) {
+              if (!dst.toFile.getParentFile.exists())
+                dst.toFile.getParentFile.mkdirs()
+
               val f = new RandomAccessFile(dst.toFile, "rw")
               filesToClose.add(f)
               return new RandomAccessFileOutStream(f)
@@ -143,6 +141,7 @@ final class ArchiveExtractor extends Closeable {
           val pathS = archive.getProperty(index, PropID.PATH).asInstanceOf[String]
           val path = dst.resolve(pathS).toFile
           if (isDir) {
+            // create folder here in case there's empty folder
             path.mkdirs()
             null
           } else {
@@ -190,7 +189,7 @@ final class ArchiveExtractor extends Closeable {
    */
   def extractTo(dst: OutputStream): ArchiveExtractor = {
     checkArchive()
-    if (!singleArchiveFormats.contains(this.archiveFormat))
+    if (!this.archiveFormat.isInstanceOf[SingleArchiveFormat])
       throw SevenZ4SException(s"${this.archiveFormat} may contain multiple items, thus doesn't support this method")
 
     this.foreach(e => e.extractTo(Right(dst))) // `foreach` called only on one item
@@ -217,9 +216,9 @@ final class ArchiveExtractor extends Closeable {
    *
    * @return the format of this archive
    */
-  def archiveFormat: ArchiveFormat = {
+  def archiveFormat: Format = {
     checkArchive()
-    this.archive.getArchiveFormat
+    Format.of(this.archive.getArchiveFormat)
   }
 
   private def adaptItemToEntry(item: ISimpleInArchiveItem): ExtractionEntry = {
