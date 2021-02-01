@@ -1,6 +1,7 @@
 # SevenZ4S
 
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/fun.mactavish/sevenz4s/badge.svg)](https://maven-badges.herokuapp.com/maven-central/fun.mactavish/sevenz4s/)
+[![Scaladoc](https://img.shields.io/badge/scaladoc-latest-blue.svg)](https://gonearewe.github.io/SevenZ4S/fun/mactavish/sevenz4s/index.html)
 [![GitHub stars](https://img.shields.io/github/stars/gonearewe/SevenZ4S.svg?label=Stars)](https://github.com/gonearewe/SevenZ4S)
 [![GitHub forks](https://img.shields.io/github/forks/gonearewe/SevenZ4S.svg?label=Fork)](https://github.com/gonearewe/SevenZ4S)
 [![GitHub issues](https://img.shields.io/github/issues/gonearewe/SevenZ4S.svg?label=Issue)](https://github.com/gonearewe/SevenZ4S/issues)
